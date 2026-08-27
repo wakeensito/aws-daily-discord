@@ -243,7 +243,12 @@ def post_to_discord(message):
     request = urllib.request.Request(
         DISCORD_WEBHOOK_URL,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            # Discord (Cloudflare) 403s Python's default urllib User-Agent;
+            # a real UA is required, not a nicety.
+            "User-Agent": "DailyCloudFunFactBot/1.0 (+github.com/wakeensito/aws-daily-discord)",
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
