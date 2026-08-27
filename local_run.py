@@ -20,7 +20,7 @@ os.environ.setdefault("TOPICS_TABLE_NAME", "local-preview-no-table")
 os.environ.setdefault("DISCORD_WEBHOOK_URL", "http://localhost/unused-in-dry-run")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-import lambda_function  # noqa: E402
+import lambda_function
 
 
 def main():

@@ -6,14 +6,17 @@ repeats, and the length guards hold."""
 import json
 import os
 import sys
+from typing import ClassVar
 
 import pytest
 
 os.environ.setdefault("TOPICS_TABLE_NAME", "test-table")
 os.environ.setdefault("DISCORD_WEBHOOK_URL", "http://localhost/unused")
+# CI runners have no AWS config; the module builds boto3 clients at import.
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import lambda_function as bot  # noqa: E402
+import lambda_function as bot
 
 VALID_EXAMS = {"AIF", "CCP", "SAA"}
 
@@ -53,7 +56,7 @@ class TestRotation:
 
 
 class TestModelParsing:
-    GOOD = {
+    GOOD: ClassVar[dict] = {
         "definition": "is a thing.",
         "qas": [
             {"q": "What is it used for?", "a": "Stuff."},
@@ -85,8 +88,12 @@ class TestModelParsing:
 
 
 class TestAssembly:
-    ENTRY = {"topic": "Amazon S3", "exams": ["AIF", "CCP", "SAA"], "category": "s"}
-    CONTENT = {
+    ENTRY: ClassVar[dict] = {
+        "topic": "Amazon S3",
+        "exams": ["AIF", "CCP", "SAA"],
+        "category": "s",
+    }
+    CONTENT: ClassVar[dict] = {
         "definition": "is AWS's object storage service.",
         "qas": [
             ("What is it used for?", "Storing objects."),

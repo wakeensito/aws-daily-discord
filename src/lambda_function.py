@@ -140,9 +140,7 @@ def parse_model_json(text):
     so the caller's single retry can kick in."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
-        cleaned = cleaned.strip("`")
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
+        cleaned = cleaned.strip("`").removeprefix("json")
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("no JSON object in model output")
