@@ -40,7 +40,16 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubRepo}:*'
+                # Two shapes: classic "repo:owner/name:..." and GitHub's
+                # ID-stamped subject "repo:owner@id/name@id:..." (this
+                # account has the latter enabled — discovered when the first
+                # OIDC assume was refused).
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${GitHubRepo}:*'
+                  - !Sub
+                    - 'repo:${Owner}@*/${Name}@*:*'
+                    - Owner: !Select [0, !Split ['/', !Ref GitHubRepo]]
+                      Name: !Select [1, !Split ['/', !Ref GitHubRepo]]
       Policies:
         - PolicyName: sam-deploy
           PolicyDocument:
@@ -59,6 +68,10 @@ Resources:
                   - cloudformation:GetTemplateSummary
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AppStackName}/*'
+                  # samconfig sets resolve_s3 = true: the SAM CLI manages its
+                  # artifact bucket via this stack and Describes/updates it
+                  # on every deploy.
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*'
               # SAM's transform is a managed CFN "resource".
               - Sid: SamTransform
                 Effect: Allow
