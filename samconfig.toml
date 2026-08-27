@@ -1,0 +1,18 @@
+# SAM deploy config — no account-bearing values live here (the webhook URL
+# is a NoEcho parameter supplied at the first deploy and remembered by
+# CloudFormation; the AWS account comes from whatever profile runs the
+# command, e.g. AWS_PROFILE=iamadmin locally or the OIDC role in CI).
+version = 0.1
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+stack_name = "daily-discord"
+region = "us-east-1"
+resolve_s3 = true
+s3_prefix = "daily-discord"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false

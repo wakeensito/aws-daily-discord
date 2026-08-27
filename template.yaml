@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Daily Cloud Fun Fact bot — EventBridge Scheduler -> Lambda -> Bedrock (Nova
+  Micro) -> Discord webhook, with a DynamoDB topic-rotation table. One stack
+  owns everything; no account-bearing value is ever committed (pseudo-params
+  build every ARN, the webhook URL is a NoEcho parameter).
+
+Parameters:
+  DiscordWebhookUrl:
+    Type: String
+    NoEcho: true
+    Description: >-
+      Discord webhook URL for the #daily-cloud channel. Supplied at the first
+      deploy; CloudFormation keeps the previous value on later deploys, so CI
+      never needs to know it. Never written to any tracked file.
+  StudentBuilderRoleId:
+    Type: String
+    Default: ''
+    Description: >-
+      Discord role ID for the @Student Builder ping (right-click the role ->
+      Copy ID). Empty = post without the ping line.
+  BedrockModelId:
+    Type: String
+    Default: us.amazon.nova-micro-v1:0
+    Description: >-
+      Bedrock inference profile for post generation. Nova Micro is the
+      cheapest text model — this is a light, once-a-day load.
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 12 * * ? *)
+    Description: Daily post time, evaluated in ScheduleTimezone.
+  ScheduleTimezone:
+    Type: String
+    Default: America/New_York
+    Description: >-
+      Noon Miami year-round — the scheduler handles DST, so the post hour
+      never drifts.
+
+Resources:
+  TopicsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-topics'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: topic
+          AttributeType: S
+      KeySchema:
+        - AttributeName: topic
+          KeyType: HASH
+      # Used-topic rows expire on their own after the 30-day rotation window;
+      # the Lambda's cutoff filter is the real gate, TTL is just hygiene.
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  DailyPostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-post'
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          TOPICS_TABLE_NAME: !Ref TopicsTable
+          DISCORD_WEBHOOK_URL: !Ref DiscordWebhookUrl
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          STUDENT_BUILDER_ROLE_ID: !Ref StudentBuilderRoleId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TopicsTable
+        - Statement:
+            - Sid: BedrockInvokeNovaMicro
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              # The us.* inference profile routes to the foundation model in
+              # any US region, so both ARN shapes must be allowed. Pseudo-
+              # params keep the account ID out of the repo.
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.amazon.nova-micro-v1:0'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/amazon.nova-micro-v1:0'
+      Events:
+        DailySchedule:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub '${AWS::StackName}-schedule'
+            ScheduleExpression: !Ref ScheduleExpression
+            ScheduleExpressionTimezone: !Ref ScheduleTimezone
+
+Outputs:
+  FunctionName:
+    Description: Invoke this to post on demand (or use DRY_RUN=1 locally)
+    Value: !Ref DailyPostFunction
+  TopicsTableName:
+    Description: Topic-rotation table
+    Value: !Ref TopicsTable

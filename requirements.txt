@@ -1,0 +1,3 @@
+# Dev/test dependencies (CI installs these plus ruff/pytest; the Lambda
+# itself needs nothing — see src/requirements.txt).
+boto3>=1.34.0

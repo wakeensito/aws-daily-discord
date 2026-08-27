@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  GitHub Actions OIDC deploy role for the daily-discord SAM stack — the one
+  bootstrap piece, applied once from a laptop:
+    aws cloudformation deploy --template-file infra/cicd-role.yaml \
+      --stack-name daily-discord-cicd --capabilities CAPABILITY_NAMED_IAM
+  Then: gh variable set AWS_DEPLOY_ROLE_ARN --body "<DeployRoleArn output>".
+  Every ARN is built from pseudo-parameters — no account ID lives in this
+  repo. Never static AWS keys; OIDC role assumption only.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: wakeensito/aws-daily-discord
+    Description: repo allowed to assume the role (owner/name)
+  AppStackName:
+    Type: String
+    Default: daily-discord
+    Description: the SAM stack this role is allowed to deploy
+
+Resources:
+  # Assumes the account already has the GitHub OIDC provider
+  # (token.actions.githubusercontent.com). If not, create it once:
+  #   aws iam create-open-id-connect-provider \
+  #     --url https://token.actions.githubusercontent.com \
+  #     --client-id-list sts.amazonaws.com
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppStackName}-gha-deploy'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubRepo}:*'
+      Policies:
+        - PolicyName: sam-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Drive the app stack's CloudFormation lifecycle.
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:GetTemplateSummary
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AppStackName}/*'
+              # SAM's transform is a managed CFN "resource".
+              - Sid: SamTransform
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+              # SAM-managed artifact bucket (resolve_s3 = true).
+              - Sid: SamArtifacts
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:CreateBucket
+                  - s3:GetBucketLocation
+                  - s3:PutBucketPolicy
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutBucketVersioning
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutBucketTagging
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default*'
+              # Resources the app stack creates/updates, all name-scoped.
+              - Sid: AppResources
+                Effect: Allow
+                Action:
+                  - lambda:*
+                  - scheduler:*
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppStackName}-*'
+                  - !Sub 'arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/${AppStackName}-*'
+                  - !Sub 'arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule-group/default'
+              - Sid: AppTable
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:UpdateTimeToLive
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AppStackName}-*'
+              # The stack creates the function's execution role + scheduler
+              # role; scoped to the stack's naming prefix.
+              - Sid: AppRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AppStackName}-*'
+
+Outputs:
+  DeployRoleArn:
+    Description: Set this as the AWS_DEPLOY_ROLE_ARN repo variable
+    Value: !GetAtt DeployRole.Arn

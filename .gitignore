@@ -1,0 +1,20 @@
+# SAM
+.aws-sam/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Local artifacts
+response.json
+out.json
+*.zip
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
