@@ -1,14 +1,14 @@
 # Daily Cloud Fun Fact bot
 
 Automates the **#daily-cloud** channel for the AWS Student Builder Discord:
-every day at noon (America/New_York, DST-proof) it picks an AWS topic that
-hasn't run in 30 days, has Bedrock write a short fun-fact post, and delivers
+every day at noon (America/New_York, DST-proof) it picks an AWS topic
+not yet posted this cycle, has Bedrock write a short fun-fact post, and delivers
 it through a Discord webhook — including **which certification exams the
 topic can appear on** (AIF-C01, CLF-C02, SAA-C03).
 
 ```
-EventBridge Scheduler ──▶ Lambda (python3.12, arm64)
-                             │  1. pick topic  (DynamoDB 30-day rotation, TTL)
+EventBridge Scheduler ──▶ Lambda (python3.13, arm64)
+                             │  1. pick topic  (DynamoDB full-cycle rotation)
                              │  2. generate    (Bedrock Converse · Nova Micro)
                              │  3. assemble    (Discord markdown, in code)
                              └▶ 4. post        (webhook + @Student Builder ping)
@@ -19,6 +19,11 @@ IAM. Estimated cost: well under $1/month (Nova Micro is the cheapest
 Bedrock text model; one invocation a day).
 
 ## Design rules
+
+- **Full-cycle rotation.** Every topic posts exactly once before any topic
+  repeats — a complete ~97-day syllabus at one post per day. When the list
+  is exhausted the Lambda clears the rotation table and starts a fresh
+  cycle. (Used-topic rows persist for the whole cycle; no TTL on purpose.)
 
 - **Exam tags are data, not generation.** `src/topics.json` maps every topic
   to its exams, derived from the official exam guides' in-scope lists. The
