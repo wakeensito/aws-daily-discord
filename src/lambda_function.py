@@ -1,8 +1,10 @@
 """Daily Cloud Fun Fact bot.
 
 EventBridge Scheduler -> this Lambda -> Bedrock (Nova Micro via the Converse
-API) -> Discord webhook. A DynamoDB table tracks which topics ran in the last
-30 days so the rotation never repeats early.
+API) -> Discord webhook. A DynamoDB table tracks which topics have run in
+the CURRENT cycle: full-cycle rotation, so every topic posts exactly once
+(~97 days at one/day) before any topic repeats; when the list is exhausted
+the table is cleared and a fresh cycle begins.
 
 Split of responsibilities, on purpose:
   - The MODEL writes only the content fields (definition, three Q&As, exam
@@ -20,7 +22,7 @@ import json
 import os
 import random
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -33,8 +35,6 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
 ROLE_ID = os.environ.get("STUDENT_BUILDER_ROLE_ID", "")
 DRY_RUN = os.environ.get("DRY_RUN", "") == "1"
-
-ROTATION_DAYS = 30
 
 # Per-field caps: prompt asks for less; these are the hard ceilings before
 # sentence-boundary truncation. The whole message is guarded at 1900 chars
@@ -54,37 +54,51 @@ def load_topics():
         return json.load(f)
 
 
-def get_used_topics(days=ROTATION_DAYS):
-    """Topic names posted in the last N days. Best-effort: an unreadable
+def get_used_topics():
+    """Topic names already posted this cycle. Best-effort: an unreadable
     table must not kill the daily post — worst case a topic repeats early."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     try:
         table = dynamodb.Table(TABLE_NAME)
-        response = table.scan(
-            FilterExpression="used_date > :cutoff",
-            ExpressionAttributeValues={":cutoff": cutoff},
-        )
-        return {item["topic"] for item in response.get("Items", [])}
+        used = set()
+        kwargs = {"ProjectionExpression": "topic"}
+        while True:
+            response = table.scan(**kwargs)
+            used.update(item["topic"] for item in response.get("Items", []))
+            if "LastEvaluatedKey" not in response:
+                return used
+            kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
     except ClientError as e:
         print(f"Rotation table read failed (continuing): {e}")
         return set()
 
 
 def pick_topic(all_topics, used):
+    """Full-cycle rotation: random among topics not yet posted this cycle.
+    None means the cycle is complete — the caller resets and starts fresh."""
     fresh = [t for t in all_topics if t["topic"] not in used]
-    return random.choice(fresh if fresh else all_topics)
+    return random.choice(fresh) if fresh else None
+
+
+def reset_cycle(used):
+    """Cycle complete: clear every used-topic row so the next cycle starts
+    from the full list. Runs once per ~97 days."""
+    table = dynamodb.Table(TABLE_NAME)
+    try:
+        with table.batch_writer() as batch:
+            for topic in used:
+                batch.delete_item(Key={"topic": topic})
+    except ClientError as e:
+        # Non-fatal: leftover rows only delay their topics into the next
+        # cycle; the daily post still goes out.
+        print(f"Cycle reset failed (continuing): {e}")
 
 
 def record_topic_usage(topic):
-    now = datetime.now(timezone.utc)
     try:
         dynamodb.Table(TABLE_NAME).put_item(
             Item={
                 "topic": topic,
-                "used_date": now.isoformat(),
-                # TTL hygiene: the row deletes itself once it can no longer
-                # matter to the rotation window.
-                "ttl": int(now.timestamp()) + (ROTATION_DAYS + 5) * 86400,
+                "used_date": datetime.now(timezone.utc).isoformat(),
             }
         )
     except ClientError as e:
@@ -258,7 +272,13 @@ def post_to_discord(message):
 
 def lambda_handler(event, context):
     topics = load_topics()
-    entry = pick_topic(topics, get_used_topics())
+    used = get_used_topics()
+    entry = pick_topic(topics, used)
+    if entry is None:
+        print(f"Cycle complete — all {len(topics)} topics posted; starting fresh.")
+        if not DRY_RUN:
+            reset_cycle(used)
+        entry = pick_topic(topics, set())
     print(f"Selected topic: {entry['topic']} ({exam_label(entry['exams'])})")
 
     content = generate_content(entry)

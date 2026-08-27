@@ -49,11 +49,9 @@ Resources:
       KeySchema:
         - AttributeName: topic
           KeyType: HASH
-      # Used-topic rows expire on their own after the 30-day rotation window;
-      # the Lambda's cutoff filter is the real gate, TTL is just hygiene.
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
+      # No TTL on purpose: full-cycle rotation needs every used-topic row to
+      # persist for the whole ~97-day cycle; the Lambda clears the table
+      # itself when the cycle completes.
 
   DailyPostFunction:
     Type: AWS::Serverless::Function

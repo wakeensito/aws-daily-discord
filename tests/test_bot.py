@@ -49,10 +49,22 @@ class TestRotation:
         picked = bot.pick_topic(topics, used={"a", "b", "c"})
         assert picked["topic"] == "d"
 
-    def test_pick_resets_when_all_used(self):
+    def test_full_cycle_signals_exhaustion_with_none(self):
+        # Full-cycle rule: never fall back to a repeat silently — the caller
+        # resets the cycle and repicks from the full list.
         topics = [{"topic": n, "exams": ["CCP"], "category": "x"} for n in "ab"]
-        picked = bot.pick_topic(topics, used={"a", "b"})
-        assert picked["topic"] in {"a", "b"}
+        assert bot.pick_topic(topics, used={"a", "b"}) is None
+
+    def test_full_cycle_covers_every_topic_before_any_repeat(self):
+        topics = [{"topic": n, "exams": ["CCP"], "category": "x"} for n in "abcdef"]
+        used, seen = set(), []
+        for _ in range(len(topics)):
+            entry = bot.pick_topic(topics, used)
+            assert entry is not None
+            seen.append(entry["topic"])
+            used.add(entry["topic"])
+        assert sorted(seen) == sorted(t["topic"] for t in topics)
+        assert bot.pick_topic(topics, used) is None
 
 
 class TestModelParsing:
