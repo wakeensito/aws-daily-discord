@@ -12,6 +12,8 @@ import pytest
 
 os.environ.setdefault("TOPICS_TABLE_NAME", "test-table")
 os.environ.setdefault("DISCORD_WEBHOOK_URL", "http://localhost/unused")
+# CI runners have no AWS config; the module builds boto3 clients at import.
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import lambda_function as bot
