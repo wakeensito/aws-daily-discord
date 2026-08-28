@@ -76,25 +76,25 @@ class TestRanking:
 class TestPlanDigest:
     def test_caps_and_leftover_counting(self):
         unseen = {
-            "Internships": [listing(i) for i in range(20)],
+            "Internships": [listing(i) for i in range(30)],
             "New Grad": [listing(100 + i) for i in range(10)],
         }
         chosen, to_mark, more = career.plan_digest(unseen)
-        assert len(chosen["Internships"]) == 8
-        assert len(chosen["New Grad"]) == 4
-        assert len(to_mark) == 30
-        assert more == 30 - 12
+        assert len(chosen["Internships"]) == 12
+        assert len(chosen["New Grad"]) == 6
+        assert len(to_mark) == 40
+        assert more == 40 - career.TOTAL_CAP
 
     def test_spare_capacity_flows_both_directions(self):
         # New Grad short -> Internships takes the slack, and vice versa.
         chosen, _, _ = career.plan_digest(
-            {"Internships": [listing(i) for i in range(20)], "New Grad": []}
+            {"Internships": [listing(i) for i in range(30)], "New Grad": []}
         )
-        assert len(chosen["Internships"]) == 12
+        assert len(chosen["Internships"]) == career.TOTAL_CAP
         chosen, _, _ = career.plan_digest(
-            {"Internships": [], "New Grad": [listing(i) for i in range(20)]}
+            {"Internships": [], "New Grad": [listing(i) for i in range(30)]}
         )
-        assert len(chosen["New Grad"]) == 12
+        assert len(chosen["New Grad"]) == career.TOTAL_CAP
 
     def test_marks_everything_unseen_even_unshown(self):
         unseen = {"Internships": [listing(i) for i in range(15)], "New Grad": []}
@@ -110,7 +110,9 @@ class TestDigestMessage:
 
     def test_skeleton_and_star(self, monkeypatch):
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
-        msg = career.build_digest(dict(self.CHOSEN), more_count=5)
+        msgs = career.build_messages(dict(self.CHOSEN))
+        assert len(msgs) == 1
+        msg = msgs[0]
         assert msg.startswith("💼 **Daily Career Drops**\n")
         assert "new today" not in msg, "no counts in the header"
         assert "**Internships**" in msg and "**New Grad**" in msg
@@ -121,24 +123,39 @@ class TestDigestMessage:
         assert "more today" not in msg
         assert "<@&" not in msg, "no ping by default"
 
-    def test_role_ping_when_configured(self, monkeypatch):
+    def test_role_ping_only_on_last_chunk(self, monkeypatch):
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "987654321098765432")
-        msg = career.build_digest(dict(self.CHOSEN), more_count=0)
-        assert msg.endswith("<@&987654321098765432>")
-
-    def test_shrink_keeps_message_under_cap(self, monkeypatch):
-        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
-        chosen = {
+        big = {
             "Internships": [
-                listing(i, company="C" * 40, title="T" * 70, url="https://x/" + "u" * 90)
-                for i in range(8)
+                listing(i, title="T" * 70, url="https://x/" + "u" * 150)
+                for i in range(12)
             ],
             "New Grad": [
-                listing(100 + i, company="C" * 40, title="T" * 70) for i in range(4)
+                listing(100 + i, title="T" * 70, url="https://x/" + "u" * 150)
+                for i in range(6)
             ],
         }
-        msg = career.shrink_to_cap(chosen, more_count=0)
-        assert len(msg) <= career.MESSAGE_CAP
+        msgs = career.build_messages(big)
+        assert len(msgs) == career.MAX_MESSAGES
+        assert msgs[-1].endswith("<@&987654321098765432>")
+        assert "<@&" not in "".join(msgs[:-1]), "ping only once"
+
+    def test_chunks_stay_under_cap_and_header_once(self, monkeypatch):
+        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
+        big = {
+            "Internships": [
+                listing(i, company="C" * 40, title="T" * 70, url="https://x/" + "u" * 150)
+                for i in range(12)
+            ],
+            "New Grad": [
+                listing(100 + i, company="C" * 40, title="T" * 70) for i in range(6)
+            ],
+        }
+        msgs = career.build_messages(big)
+        assert 1 <= len(msgs) <= career.MAX_MESSAGES
+        assert all(len(m) <= career.MESSAGE_CAP for m in msgs)
+        assert msgs[0].startswith("💼 **Daily Career Drops**")
+        assert "Daily Career Drops" not in "".join(msgs[1:]), "header once"
 
 
 class TestEmbedSuppression:
