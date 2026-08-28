@@ -13,8 +13,9 @@ apply links go straight to employer application systems). One message,
 
 - **Open feed, AWS highlight**: no company filtering (member outcomes over
   brand purity) — Amazon/AWS roles get ⭐ and sort first.
-- **Undergrad-friendly**: listings flagged advanced-degree-only (🎓 in the
-  source repo) are dropped.
+- **Undergrad-friendly + USA-only**: advanced-degree-only listings (🎓 in
+  the source repo) and listings whose every location is identifiably
+  non-US are dropped.
 - **Strictly new**: a seen-listings table (180-day TTL) dedups every run;
   everything unseen is marked, shown or not — tomorrow is only new drops.
   No new listings → no post (silence over noise).

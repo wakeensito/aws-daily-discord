@@ -70,13 +70,43 @@ def fetch_listings(url):
         return json.load(response)
 
 
+US_STATES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY", "DC", "PR",
+}
+US_SHORTHANDS = {"nyc", "sf", "bay area", "remote", "remote in usa", "usa"}
+
+
+def is_us_location(loc):
+    """Best-effort US detector for Simplify's freeform location strings
+    ('Seattle, WA', 'Vancouver, BC, Canada', 'Remote in USA'). Bare
+    'Remote' counts as US — the data uses 'Remote in <country>' when it
+    means elsewhere."""
+    text = str(loc).strip()
+    lowered = text.lower()
+    if "usa" in lowered or "united states" in lowered:
+        return True
+    if lowered in US_SHORTHANDS:
+        return True
+    tail = text.rsplit(",", 1)[-1].strip().upper()
+    return tail in US_STATES
+
+
 def is_eligible(listing, now):
-    """Live, visible, undergrad-friendly, and recent enough to matter."""
+    """Live, visible, undergrad-friendly, US-based, recent enough."""
     if not listing.get("active") or not listing.get("is_visible"):
         return False
     degrees = listing.get("degrees") or []
     if degrees and "Bachelor's" not in degrees:
         return False  # Simplify's advanced-degree flag
+    locations = listing.get("locations") or []
+    # USA-only (user call): drop only when every location is identifiably
+    # non-US; no locations at all = unknown, keep.
+    if locations and not any(is_us_location(x) for x in locations):
+        return False
     return listing.get("date_posted", 0) > now - WINDOW_DAYS * 86400
 
 

@@ -46,6 +46,17 @@ class TestEligibility:
         assert not career.is_eligible(listing(5, is_visible=False), NOW)
         assert not career.is_eligible(listing(6, posted_ago_days=30), NOW)
 
+    def test_usa_only(self):
+        drop = listing(7, locations=["Vancouver, BC, Canada"])
+        assert not career.is_eligible(drop, NOW)
+        assert not career.is_eligible(listing(8, locations=["London, UK"]), NOW)
+        keep_multi = listing(9, locations=["Toronto, ON, Canada", "Austin, TX"])
+        assert career.is_eligible(keep_multi, NOW)
+        assert career.is_eligible(listing(10, locations=["Remote in USA"]), NOW)
+        assert career.is_eligible(listing(11, locations=["Remote"]), NOW)
+        assert career.is_eligible(listing(12, locations=["NYC"]), NOW)
+        assert career.is_eligible(listing(13, locations=[]), NOW)  # unknown: keep
+
 
 class TestRanking:
     def test_aws_flavored_sorts_first_then_newest(self):
