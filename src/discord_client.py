@@ -22,13 +22,24 @@ def clip(text, limit):
     return cut[: cut.rfind(" ")].rstrip() + "…"
 
 
-def post_to_discord(webhook_url, message, role_id=""):
+SUPPRESS_EMBEDS = 1 << 2  # Discord message flag: no auto link-preview cards
+
+
+def build_payload(message, role_id="", suppress_embeds=False):
     payload = {
         "content": message,
         # Nothing pings unless explicitly allowed; the role ping is the one
         # exception when configured.
         "allowed_mentions": {"parse": [], "roles": [role_id] if role_id else []},
     }
+    if suppress_embeds:
+        # Link-heavy digests would otherwise sprout a preview card per URL.
+        payload["flags"] = SUPPRESS_EMBEDS
+    return payload
+
+
+def post_to_discord(webhook_url, message, role_id="", suppress_embeds=False):
+    payload = build_payload(message, role_id, suppress_embeds)
     request = urllib.request.Request(
         webhook_url,
         data=json.dumps(payload).encode("utf-8"),

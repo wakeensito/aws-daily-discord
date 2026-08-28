@@ -272,7 +272,7 @@ def lambda_handler(event, context):
         print("DRY_RUN=1 — not posting, not marking seen.")
         return {"statusCode": 200, "dryRun": True}
 
-    post_to_discord(CAREER_WEBHOOK_URL, message, CAREER_ROLE_ID)
+    post_to_discord(CAREER_WEBHOOK_URL, message, CAREER_ROLE_ID, suppress_embeds=True)
     mark_seen(ids_to_mark)
     shown = sum(len(v) for v in chosen.values())
     return {"statusCode": 200, "posted": shown, "marked": len(ids_to_mark)}

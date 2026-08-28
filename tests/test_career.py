@@ -139,3 +139,18 @@ class TestDigestMessage:
         }
         msg = career.shrink_to_cap(chosen, more_count=0)
         assert len(msg) <= career.MESSAGE_CAP
+
+
+class TestEmbedSuppression:
+    def test_career_payload_suppresses_link_previews(self):
+        import discord_client as dc
+
+        payload = dc.build_payload("msg", role_id="1", suppress_embeds=True)
+        assert payload["flags"] == dc.SUPPRESS_EMBEDS
+        assert payload["allowed_mentions"]["roles"] == ["1"]
+
+    def test_fun_fact_payload_unchanged(self):
+        import discord_client as dc
+
+        payload = dc.build_payload("msg")
+        assert "flags" not in payload
