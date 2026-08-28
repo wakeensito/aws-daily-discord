@@ -8,6 +8,8 @@ import sys
 import time
 from typing import ClassVar
 
+import pytest
+
 os.environ.setdefault("SEEN_TABLE_NAME", "test-seen")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -76,8 +78,8 @@ class TestRanking:
 class TestPlanDigest:
     def test_caps_and_leftover_counting(self):
         unseen = {
-            "Internships": [listing(i) for i in range(30)],
-            "New Grad": [listing(100 + i) for i in range(10)],
+            "Internships": [listing(i, company=f"Co{i}") for i in range(30)],
+            "New Grad": [listing(100 + i, company=f"Ng{i}") for i in range(10)],
         }
         chosen, to_mark, more = career.plan_digest(unseen)
         assert len(chosen["Internships"]) == 8
@@ -88,18 +90,52 @@ class TestPlanDigest:
     def test_spare_capacity_flows_both_directions(self):
         # New Grad short -> Internships takes the slack, and vice versa.
         chosen, _, _ = career.plan_digest(
-            {"Internships": [listing(i) for i in range(30)], "New Grad": []}
+            {
+                "Internships": [listing(i, company=f"Co{i}") for i in range(30)],
+                "New Grad": [],
+            }
         )
         assert len(chosen["Internships"]) == career.TOTAL_CAP
         chosen, _, _ = career.plan_digest(
-            {"Internships": [], "New Grad": [listing(i) for i in range(30)]}
+            {
+                "Internships": [],
+                "New Grad": [listing(i, company=f"Ng{i}") for i in range(30)],
+            }
         )
         assert len(chosen["New Grad"]) == career.TOTAL_CAP
 
     def test_marks_everything_unseen_even_unshown(self):
-        unseen = {"Internships": [listing(i) for i in range(15)], "New Grad": []}
+        unseen = {
+            "Internships": [listing(i, company=f"Co{i}") for i in range(15)],
+            "New Grad": [],
+        }
         _, to_mark, _ = career.plan_digest(unseen)
         assert set(to_mark) == {f"id-{i}" for i in range(15)}
+
+
+    @pytest.mark.parametrize("section", ["Internships", "New Grad"])
+    def test_at_most_one_listing_per_company(self, section):
+        """Disney flooded a real digest with 4 near-identical rows; one company
+        must never take more than COMPANY_CAP slots. Both sections are capped
+        independently — a regression in either is a regression."""
+        flooded = [listing(i, company="Disney") for i in range(6)]
+        others = [listing(100 + i, company=f"Co{i}") for i in range(6)]
+        unseen = {"Internships": [], "New Grad": []}
+        unseen[section] = flooded + others
+        chosen, _, _ = career.plan_digest(unseen)
+        companies = [x["company_name"] for x in chosen[section]]
+        assert companies.count("Disney") == career.COMPANY_CAP
+        assert len(companies) == len(set(companies)), "one row per company"
+
+    def test_company_cap_does_not_shrink_what_gets_marked_seen(self):
+        """Rows suppressed by the company cap must still be marked seen, or
+        they return on every future run forever."""
+        unseen = {
+            "Internships": [listing(i, company="Disney") for i in range(6)],
+            "New Grad": [],
+        }
+        _, to_mark, _ = career.plan_digest(unseen)
+        assert set(to_mark) == {f"id-{i}" for i in range(6)}
 
 
 class TestDigestMessage:

@@ -68,6 +68,13 @@ WINDOW_DAYS = 14  # only consider recent postings; older unseen ones age out
 # cap). The tail drops silently and is marked seen, so nothing repeats.
 SECTION_CAPS = {"Internships": 8, "New Grad": 8}
 TOTAL_CAP = 16
+# One row per company per section (2026-08-28): Disney once took 4 of the
+# slots with near-identical Spring 2027 postings, and E2 Optics lists the
+# same technician req in seven cities. With ~600 eligible listings a day
+# there is always another employer, so breadth beats depth. Suppressed rows
+# are still MARKED SEEN — capping selection must never shrink the mark set,
+# or those listings return on every run forever.
+COMPANY_CAP = 1
 MESSAGE_CAP = 1900  # Discord rejects at 2000
 MAX_MESSAGES = 2
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
@@ -129,6 +136,19 @@ def rank_key(listing):
     return (0 if is_aws(listing) else 1, -listing.get("date_posted", 0))
 
 
+def _cap_per_company(pool):
+    """Keep at most COMPANY_CAP listings per company, preserving rank order."""
+    counts = {}
+    kept = []
+    for listing in pool:
+        name = str(listing.get("company_name", "")).strip().lower()
+        if counts.get(name, 0) >= COMPANY_CAP:
+            continue
+        counts[name] = counts.get(name, 0) + 1
+        kept.append(listing)
+    return kept
+
+
 def plan_digest(unseen_by_section):
     """Pure selection logic (unit-tested): pick what to show per section,
     respecting per-section caps but redistributing spare capacity up to the
@@ -138,11 +158,13 @@ def plan_digest(unseen_by_section):
         section: sorted(unseen_by_section.get(section, []), key=rank_key)
         for section, _, _ in SOURCES
     }
-    chosen = {s: pool[: SECTION_CAPS[s]] for s, pool in pools.items()}
+    # Selection pools are company-capped; `pools` stays whole for marking.
+    showable = {s: _cap_per_company(pool) for s, pool in pools.items()}
+    chosen = {s: pool[: SECTION_CAPS[s]] for s, pool in showable.items()}
     # Second pass: hand any unused capacity (either section running short)
     # to whichever section still has supply, up to the total cap.
     remaining = TOTAL_CAP - sum(len(v) for v in chosen.values())
-    for section, pool in pools.items():
+    for section, pool in showable.items():
         if remaining <= 0:
             break
         extra = pool[len(chosen[section]) : len(chosen[section]) + remaining]
