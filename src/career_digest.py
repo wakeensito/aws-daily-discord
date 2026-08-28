@@ -13,9 +13,11 @@ Design rules (docs/plan 2026-08-27):
   - ONE message per section (Internships, New Grad) so a full block of one
     can never starve the other; plain header on the first, no counts, no
     outbound links, single role ping on the last.
-  - Everything unseen gets marked seen each run, posted or not: tomorrow is
-    strictly new drops.
-  - Zero unseen -> no post at all (silence beats "nothing today" noise).
+  - A run consumes only what it POSTS plus what the relevance gate rejected.
+    Relevant listings that didn't fit stay unseen as BACKLOG — new listings
+    outrank them (rank_key is newest-first), so they only surface on a quiet
+    day. This replaced mark-everything, which burned ~1,150 listings daily.
+  - Nothing to show -> no post at all (silence beats "nothing today" noise).
 
 DRY_RUN=1 prints the digest and skips both the webhook and the seen-table
 writes (local preview: `python local_run.py --career`).
@@ -163,18 +165,33 @@ def classify_titles(listings):
 def filter_relevant(candidates):
     """Classify the top CLASSIFY_LIMIT candidates and drop the NONE ones.
 
-    Returns (kept, ids_to_mark). ids_to_mark is EVERY input id, including the
-    dropped ones and the ones past CLASSIFY_LIMIT — narrowing it would make
-    those listings resurface on every run forever."""
-    ids_to_mark = [x["id"] for x in candidates]
+    Returns (kept, rejected_ids). rejected_ids holds ONLY the NONE-labelled
+    listings — they are permanently unwanted, and marking them stops us paying
+    to re-classify the same Panel Technician every run.
+
+    Everything else stays unmarked on purpose. A relevant listing that merely
+    did not fit today's 8 slots is BACKLOG, not waste: it stays unseen and can
+    fill a slot on a quieter day. Marking it here is what used to burn ~1,150
+    listings a day."""
     if not candidates:
-        return [], ids_to_mark
+        return [], []
     head = candidates[:CLASSIFY_LIMIT]
     labels = classify_titles(head)
     counts = collections.Counter(labels)
     print(f"  classified {len(head)}: {dict(counts)}")
-    kept = [x for x, label in zip(head, labels, strict=True) if label != "NONE"]
-    return kept, ids_to_mark
+    kept, rejected = [], []
+    for listing, label in zip(head, labels, strict=True):
+        (rejected.append(listing["id"]) if label == "NONE" else kept.append(listing))
+    return kept, rejected
+
+
+def ids_to_mark(chosen, rejected_by_section):
+    """What a successful run consumes: the rows actually POSTED, plus the
+    NONE rejections. Deliberately excludes relevant-but-unshown listings —
+    those are the backlog that keeps a quiet day from posting nothing."""
+    marks = {x["id"] for picks in chosen.values() for x in picks}
+    marks |= {i for ids in rejected_by_section.values() for i in ids}
+    return sorted(marks)
 
 
 def fetch_listings(url):
@@ -389,7 +406,7 @@ def lambda_handler(event, context):
 
     now = time.time()
     unseen_by_section = {}
-    extra_marks = {}
+    rejected_by_section = {}
     fetched_any = False
     for section, url, _ in SOURCES:
         try:
@@ -407,24 +424,26 @@ def lambda_handler(event, context):
         # shown) and rank first, so CLASSIFY_LIMIT keeps the best candidates.
         unseen.sort(key=rank_key)
         try:
-            relevant, ids_to_mark = filter_relevant(unseen)
+            relevant, rejected = filter_relevant(unseen)
         except ClassificationError as e:
             # Abandon the whole run untouched: the next schedule picks up
             # every listing, nothing is posted, nothing is consumed.
             print(f"Classification failed — skipping run entirely: {e}")
             return {"statusCode": 200, "skipped": "classification failed"}
         unseen_by_section[section] = relevant
-        extra_marks[section] = ids_to_mark
+        rejected_by_section[section] = rejected
         print(f"{section}: {len(relevant)} relevant after the gate")
     if not fetched_any:
         raise RuntimeError("Every listings source failed")
 
-    chosen, _relevant_ids, _more = plan_digest(unseen_by_section)
-    # Mark EVERY unseen listing, not just the relevant ones — plan_digest only
-    # sees post-gate survivors, so the NONE-dropped ids come from the gate.
-    ids_to_mark = sorted({i for ids in extra_marks.values() for i in ids})
-    if not ids_to_mark:
-        print("No new listings — skipping today's digest.")
+    chosen, _candidate_ids, _more = plan_digest(unseen_by_section)
+    # Consume only what we POST plus what the gate rejected. Relevant listings
+    # that didn't fit stay unseen as backlog for a quieter run.
+    marks = ids_to_mark(chosen, rejected_by_section)
+    if not any(chosen.values()):
+        print("Nothing to show — skipping this digest.")
+        if marks:
+            mark_seen(marks)  # still burn the NONE rejections
         return {"statusCode": 200, "posted": 0}
 
     messages = build_messages(chosen)
@@ -440,11 +459,11 @@ def lambda_handler(event, context):
         # id allows the mention to actually notify on that chunk only.
         role = CAREER_ROLE_ID if i == len(messages) else ""
         post_to_discord(CAREER_WEBHOOK_URL, message, role, suppress_embeds=True)
-    mark_seen(ids_to_mark)
+    mark_seen(marks)
     shown = sum(len(v) for v in chosen.values())
     return {
         "statusCode": 200,
         "posted": shown,
         "messages": len(messages),
-        "marked": len(ids_to_mark),
+        "marked": len(marks),
     }
