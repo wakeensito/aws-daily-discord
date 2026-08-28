@@ -67,8 +67,9 @@ NONE  - anything a Cybersecurity, IT, CS, AI, or IT-project-management undergrad
 - "IAM" is Identity and Access Management -> CYBER.
 - "RF", "RFID", "ASIC", "FPGA", "PCB", "VLSI", "DRAM", "NAND", "SerDes" are hardware ->
   NONE, UNLESS the title also names software or firmware work, in which case CS.
-- "Quant", "Quantitative Researcher/Analyst/Developer" -> NONE, even when the title
-  contains "Engineer" or "Developer".
+- Quant roles are IN SCOPE: "Quantitative Developer"/"Quantitative Engineer" -> CS,
+  "Quantitative Researcher"/"Quantitative Analyst" -> AI. Only a pure markets job with no
+  technical work ("Equity Trader", "Trading Associate") is NONE.
 - "Platform Engineer" (infrastructure) -> IT, but "Data Platform Engineer" -> CS.
 - "Security" in a physical sense - guard, alarm installer, surveillance camera
   technician, life safety - is NONE, not CYBER.
@@ -93,3 +94,4 @@ NONE  - anything a Cybersecurity, IT, CS, AI, or IT-project-management undergrad
 - If you cannot tell what the work is, answer NONE. Never guess to fill a category.
 
 Output format: one line per posting, exactly "number:LABEL", nothing else. No prose.
+Exactly ONE label per line. Never combine labels with a slash, comma or "or".
