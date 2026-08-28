@@ -80,8 +80,8 @@ class TestPlanDigest:
             "New Grad": [listing(100 + i) for i in range(10)],
         }
         chosen, to_mark, more = career.plan_digest(unseen)
-        assert len(chosen["Internships"]) == 12
-        assert len(chosen["New Grad"]) == 6
+        assert len(chosen["Internships"]) == 8
+        assert len(chosen["New Grad"]) == 8
         assert len(to_mark) == 40
         assert more == 40 - career.TOTAL_CAP
 
@@ -111,11 +111,11 @@ class TestDigestMessage:
     def test_skeleton_and_star(self, monkeypatch):
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
         msgs = career.build_messages(dict(self.CHOSEN))
-        assert len(msgs) == 1
-        msg = msgs[0]
-        assert msg.startswith("💼 **Daily Career Drops**\n")
+        assert len(msgs) == 2, "one message per populated section"
+        msg = "\n".join(msgs)
+        assert msgs[0].startswith("💼 **Daily Career Drops**\n")
         assert "new today" not in msg, "no counts in the header"
-        assert "**Internships**" in msg and "**New Grad**" in msg
+        assert "**Internships**" in msgs[0] and "**New Grad**" in msgs[1]
         assert "⭐ **Amazon**" in msg and "• **Stripe**" in msg
         assert "[apply](https://jobs.example.com/1)" in msg
         # Deliberately no outbound footer — the digest keeps members here.
@@ -156,6 +156,37 @@ class TestDigestMessage:
         assert all(len(m) <= career.MESSAGE_CAP for m in msgs)
         assert msgs[0].startswith("💼 **Daily Career Drops**")
         assert "Daily Career Drops" not in "".join(msgs[1:]), "header once"
+
+
+    def test_new_grad_section_survives_a_full_internship_block(self, monkeypatch):
+        """Regression: sections were flowed into one shared message, so a full
+        Internships block consumed the whole char budget and the entire New Grad
+        section — header and rows — was silently dropped and marked seen."""
+        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
+        big = {
+            "Internships": [
+                listing(i, company="C" * 25, title="T" * 60, url="https://x/" + "u" * 110)
+                for i in range(8)
+            ],
+            "New Grad": [
+                listing(100 + i, company="D" * 25, title="G" * 60, url="https://y/" + "v" * 110)
+                for i in range(8)
+            ],
+        }
+        msgs = career.build_messages(big)
+        joined = "\n".join(msgs)
+        assert "**Internships**" in joined, "internships block missing"
+        assert "**New Grad**" in joined, "new grad block starved by internships"
+        assert all(len(m) <= career.MESSAGE_CAP for m in msgs)
+
+    def test_empty_section_produces_no_orphan_header(self, monkeypatch):
+        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
+        msgs = career.build_messages(
+            {"Internships": [listing(1)], "New Grad": []}
+        )
+        joined = "\n".join(msgs)
+        assert "**Internships**" in joined
+        assert "**New Grad**" not in joined
 
 
 class TestEmbedSuppression:

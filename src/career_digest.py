@@ -10,8 +10,9 @@ Design rules (docs/plan 2026-08-27):
     and sort first (club identity as a highlight, never a gate).
   - Undergrad-friendly: listings whose `degrees` requires an advanced degree
     (no "Bachelor's") are dropped — that's Simplify's per-listing flag.
-  - ONE message, as many rows as fit (~9-11) from the best ~18 candidates;
-    plain header, no counts, no outbound links, single role ping.
+  - ONE message per section (Internships, New Grad) so a full block of one
+    can never starve the other; plain header on the first, no counts, no
+    outbound links, single role ping on the last.
   - Everything unseen gets marked seen each run, posted or not: tomorrow is
     strictly new drops.
   - Zero unseen -> no post at all (silence beats "nothing today" noise).
@@ -59,16 +60,16 @@ SOURCES = [
 ]
 
 WINDOW_DAYS = 14  # only consider recent postings; older unseen ones age out
-# One message, always (user call: a couple of rows short beats a second
-# message). The caps below bound SELECTION — ranking picks the best ~18
-# candidates (AWS-starred first, then newest) and the chunker fits what a
-# single message holds (typically 9-11 rows; apply URLs are 100-180 chars
-# each against Discord's 2000-char cap). The tail drops silently and is
-# marked seen, so nothing repeats.
-SECTION_CAPS = {"Internships": 12, "New Grad": 6}
-TOTAL_CAP = 18
+# One message per section (2026-08-28): the earlier single-message rule let
+# Internships — rendered first — consume the whole budget and silently drop
+# every New Grad row. Caps bound SELECTION evenly (AWS-starred first, then
+# newest); each section then renders into its own message and fits what it
+# holds (~8 rows; apply URLs run 100-180 chars against Discord's 2000-char
+# cap). The tail drops silently and is marked seen, so nothing repeats.
+SECTION_CAPS = {"Internships": 8, "New Grad": 8}
+TOTAL_CAP = 16
 MESSAGE_CAP = 1900  # Discord rejects at 2000
-MAX_MESSAGES = 1
+MAX_MESSAGES = 2
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
 
 
@@ -163,32 +164,29 @@ def format_line(listing):
 
 
 def build_messages(chosen):
-    """Render the digest as 1..MAX_MESSAGES Discord messages, each under
-    MESSAGE_CAP. Plain header on the first chunk only (no counts, no
-    outbound links — user calls); sections flow across chunks; the role
-    ping rides only the LAST chunk (single notification). Rows that don't
-    fit within MAX_MESSAGES are silently dropped — they're marked seen
+    """Render the digest as ONE MESSAGE PER SECTION (up to MAX_MESSAGES),
+    each under MESSAGE_CAP. Sections used to flow into shared chunks, which
+    let a full Internships block eat the whole char budget and silently drop
+    the entire New Grad section — headline bug, since those listings were
+    still marked seen and never came back. Header rides the first message
+    only (no counts, no outbound links — user calls); the role ping rides
+    the LAST message only, so a drop is one notification. Rows that don't
+    fit their own section's message drop silently; they're marked seen
     either way, so nothing repeats tomorrow."""
-    lines = ["💼 **Daily Career Drops**", ""]
+    messages = []
     for section, _, _repo in SOURCES:
         picks = chosen.get(section, [])
-        if not picks:
+        if not picks or len(messages) >= MAX_MESSAGES:
             continue
+        lines = ["💼 **Daily Career Drops**", ""] if not messages else []
         lines.append(f"**{section}**")
-        lines += [format_line(x) for x in picks]
-        lines.append("")
-
-    messages, current = [], []
-    for line in lines:
-        if current and len("\n".join([*current, line])) > MESSAGE_CAP:
-            messages.append("\n".join(current).rstrip())
-            current = [] if len(messages) >= MAX_MESSAGES else [line]
-            if not current:
+        block = "\n".join(lines)
+        for listing in picks:
+            row = format_line(listing)
+            if len(block) + 1 + len(row) > MESSAGE_CAP:
                 break
-        else:
-            current.append(line)
-    if current and len(messages) < MAX_MESSAGES:
-        messages.append("\n".join(current).rstrip())
+            block += "\n" + row
+        messages.append(block)
 
     if CAREER_ROLE_ID and messages:
         # MESSAGE_CAP leaves 100 chars of headroom under Discord's real
