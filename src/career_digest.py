@@ -389,6 +389,7 @@ def lambda_handler(event, context):
 
     now = time.time()
     unseen_by_section = {}
+    extra_marks = {}
     fetched_any = False
     for section, url, _ in SOURCES:
         try:
@@ -400,12 +401,28 @@ def lambda_handler(event, context):
         candidates = [x for x in listings if is_eligible(x, now)]
         ids = [x["id"] for x in candidates]
         unseen_ids = ids if DRY_RUN else filter_unseen(ids)
-        unseen_by_section[section] = [x for x in candidates if x["id"] in unseen_ids]
+        unseen = [x for x in candidates if x["id"] in unseen_ids]
         print(f"{section}: {len(candidates)} eligible, {len(unseen_ids)} unseen")
+        # Classify AFTER dedup (never spend tokens on rows that can't be
+        # shown) and rank first, so CLASSIFY_LIMIT keeps the best candidates.
+        unseen.sort(key=rank_key)
+        try:
+            relevant, ids_to_mark = filter_relevant(unseen)
+        except ClassificationError as e:
+            # Abandon the whole run untouched: the next schedule picks up
+            # every listing, nothing is posted, nothing is consumed.
+            print(f"Classification failed — skipping run entirely: {e}")
+            return {"statusCode": 200, "skipped": "classification failed"}
+        unseen_by_section[section] = relevant
+        extra_marks[section] = ids_to_mark
+        print(f"{section}: {len(relevant)} relevant after the gate")
     if not fetched_any:
         raise RuntimeError("Every listings source failed")
 
-    chosen, ids_to_mark, _more = plan_digest(unseen_by_section)
+    chosen, _relevant_ids, _more = plan_digest(unseen_by_section)
+    # Mark EVERY unseen listing, not just the relevant ones — plan_digest only
+    # sees post-gate survivors, so the NONE-dropped ids come from the gate.
+    ids_to_mark = sorted({i for ids in extra_marks.values() for i in ids})
     if not ids_to_mark:
         print("No new listings — skipping today's digest.")
         return {"statusCode": 200, "posted": 0}

@@ -152,9 +152,20 @@ Resources:
           SEEN_TABLE_NAME: !Ref SeenListingsTable
           CAREER_WEBHOOK_URL: !Ref CareerWebhookUrl
           CAREER_ROLE_ID: !Ref CareerRoleId
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SeenListingsTable
+        - Statement:
+            - Sid: BedrockInvokeNovaMicro
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              # Same two ARN shapes as the fun-fact function: the us.* profile
+              # routes to the foundation model in any US region. Pseudo-params
+              # keep the account ID out of the repo.
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.amazon.nova-micro-v1:0'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/amazon.nova-micro-v1:0'
       Events:
         DailySchedule:
           Type: ScheduleV2
