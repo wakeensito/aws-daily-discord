@@ -155,8 +155,9 @@ def format_line(listing):
 
 
 def build_digest(chosen, more_count):
-    total_shown = sum(len(v) for v in chosen.values())
-    lines = [f"💼 **Daily Career Drops** — {total_shown + more_count} new today", ""]
+    # Plain header on purpose (user call): no counts, no links — just the
+    # drops and the ping. The listings speak for themselves.
+    lines = ["💼 **Daily Career Drops**", ""]
     for section, _, _repo in SOURCES:
         picks = chosen.get(section, [])
         if not picks:
