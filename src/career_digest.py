@@ -58,9 +58,13 @@ SOURCES = [
 ]
 
 WINDOW_DAYS = 14  # only consider recent postings; older unseen ones age out
-SECTION_CAPS = {"Internships": 8, "New Grad": 4}
-TOTAL_CAP = 12
+# 18 rows don't fit one Discord message (apply URLs are 100-180 chars each,
+# 2000-char cap) — the digest sends as up to MAX_MESSAGES back-to-back
+# chunks; the role ping rides only the last one.
+SECTION_CAPS = {"Internships": 12, "New Grad": 6}
+TOTAL_CAP = 18
 MESSAGE_CAP = 1900  # Discord rejects at 2000
+MAX_MESSAGES = 2
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
 
 
@@ -154,9 +158,13 @@ def format_line(listing):
     return f"{star}**{company}** — {title} — {where} — [apply]({url})"
 
 
-def build_digest(chosen, more_count):
-    # Plain header on purpose (user call): no counts, no links — just the
-    # drops and the ping. The listings speak for themselves.
+def build_messages(chosen):
+    """Render the digest as 1..MAX_MESSAGES Discord messages, each under
+    MESSAGE_CAP. Plain header on the first chunk only (no counts, no
+    outbound links — user calls); sections flow across chunks; the role
+    ping rides only the LAST chunk (single notification). Rows that don't
+    fit within MAX_MESSAGES are silently dropped — they're marked seen
+    either way, so nothing repeats tomorrow."""
     lines = ["💼 **Daily Career Drops**", ""]
     for section, _, _repo in SOURCES:
         picks = chosen.get(section, [])
@@ -165,25 +173,24 @@ def build_digest(chosen, more_count):
         lines.append(f"**{section}**")
         lines += [format_line(x) for x in picks]
         lines.append("")
-    # No "…and X more →" footer links on purpose (user call 2026-08-28):
-    # the digest is the destination — keep members coming to the Discord,
-    # not clicking out to GitHub. The header's total still signals volume.
-    if CAREER_ROLE_ID:
-        lines += ["", f"<@&{CAREER_ROLE_ID}>"]
-    return "\n".join(lines)
 
+    messages, current = [], []
+    for line in lines:
+        if current and len("\n".join([*current, line])) > MESSAGE_CAP:
+            messages.append("\n".join(current).rstrip())
+            current = [] if len(messages) >= MAX_MESSAGES else [line]
+            if not current:
+                break
+        else:
+            current.append(line)
+    if current and len(messages) < MAX_MESSAGES:
+        messages.append("\n".join(current).rstrip())
 
-def shrink_to_cap(chosen, more_count):
-    """Drop lines from the largest section until the message fits."""
-    message = build_digest(chosen, more_count)
-    while len(message) > MESSAGE_CAP:
-        largest = max(chosen, key=lambda s: len(chosen[s]))
-        if not chosen[largest]:
-            break
-        chosen[largest] = chosen[largest][:-1]
-        more_count += 1
-        message = build_digest(chosen, more_count)
-    return message
+    if CAREER_ROLE_ID and messages:
+        # MESSAGE_CAP leaves 100 chars of headroom under Discord's real
+        # 2000 limit; the ping is ~27, so appending is always safe.
+        messages[-1] += f"\n\n<@&{CAREER_ROLE_ID}>"
+    return messages
 
 
 def filter_unseen(ids):
@@ -260,19 +267,29 @@ def lambda_handler(event, context):
     if not fetched_any:
         raise RuntimeError("Every listings source failed")
 
-    chosen, ids_to_mark, more_count = plan_digest(unseen_by_section)
+    chosen, ids_to_mark, _more = plan_digest(unseen_by_section)
     if not ids_to_mark:
         print("No new listings — skipping today's digest.")
         return {"statusCode": 200, "posted": 0}
 
-    message = shrink_to_cap(chosen, more_count)
-    print(f"Digest ({len(message)} chars):\n{message}")
+    messages = build_messages(chosen)
+    for i, message in enumerate(messages, 1):
+        print(f"Digest chunk {i}/{len(messages)} ({len(message)} chars):\n{message}")
 
     if DRY_RUN:
         print("DRY_RUN=1 — not posting, not marking seen.")
         return {"statusCode": 200, "dryRun": True}
 
-    post_to_discord(CAREER_WEBHOOK_URL, message, CAREER_ROLE_ID, suppress_embeds=True)
+    for i, message in enumerate(messages, 1):
+        # The ping lives inside the last chunk's content; passing the role
+        # id allows the mention to actually notify on that chunk only.
+        role = CAREER_ROLE_ID if i == len(messages) else ""
+        post_to_discord(CAREER_WEBHOOK_URL, message, role, suppress_embeds=True)
     mark_seen(ids_to_mark)
     shown = sum(len(v) for v in chosen.values())
-    return {"statusCode": 200, "posted": shown, "marked": len(ids_to_mark)}
+    return {
+        "statusCode": 200,
+        "posted": shown,
+        "messages": len(messages),
+        "marked": len(ids_to_mark),
+    }
