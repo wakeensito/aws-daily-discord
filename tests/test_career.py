@@ -115,7 +115,9 @@ class TestDigestMessage:
         assert "**Internships**" in msg and "**New Grad**" in msg
         assert "⭐ **Amazon**" in msg and "• **Stripe**" in msg
         assert "[apply](https://jobs.example.com/1)" in msg
-        assert "…and 5 more today →" in msg
+        # Deliberately no outbound footer — the digest keeps members here.
+        assert "github.com/SimplifyJobs" not in msg
+        assert "more today" not in msg
         assert "<@&" not in msg, "no ping by default"
 
     def test_role_ping_when_configured(self, monkeypatch):
