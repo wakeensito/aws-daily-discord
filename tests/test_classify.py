@@ -57,6 +57,17 @@ class TestClassifyTitles:
         with pytest.raises(career.ClassificationError):
             career.classify_titles([listing(1), listing(2)])
 
+    def test_takes_the_first_label_when_the_model_hedges(self, monkeypatch):
+        """Observed live: the model answered 'CS/AI'. A single hedged line must
+        not abandon the whole digest — take the first valid label it names."""
+        monkeypatch.setattr(career, "_converse", lambda text: "1:CS/AI\n2:NONE")
+        assert career.classify_titles([listing(1), listing(2)]) == ["CS", "NONE"]
+
+    def test_hedge_that_names_no_valid_label_still_raises(self, monkeypatch):
+        monkeypatch.setattr(career, "_converse", lambda text: "1:WIZARD/GOBLIN")
+        with pytest.raises(career.ClassificationError):
+            career.classify_titles([listing(1)])
+
     def test_raises_on_unknown_label(self, monkeypatch):
         monkeypatch.setattr(career, "_converse", lambda text: "1:CS\n2:WIZARD")
         with pytest.raises(career.ClassificationError):

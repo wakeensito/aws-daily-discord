@@ -173,6 +173,7 @@ Resources:
             Name: !Sub '${AWS::StackName}-career-schedule'
             ScheduleExpression: !Ref CareerScheduleExpression
             ScheduleExpressionTimezone: !Ref ScheduleTimezone
+            Input: '{"scope": "usa"}'
         # Second daily digest (~50-90 eligible listings/day is plenty for
         # two): the seen-table dedup is run-based, so this posts only what
         # appeared since the morning run. Day rhythm: 9 AM careers, noon
@@ -181,8 +182,12 @@ Resources:
           Type: ScheduleV2
           Properties:
             Name: !Sub '${AWS::StackName}-career-schedule-pm'
+            # Afternoon run is Florida-only: we are a Miami school and local
+            # roles need no relocation. Florida is ~200 active listings, so
+            # this digest is often short by design.
             ScheduleExpression: !Ref CareerAfternoonScheduleExpression
             ScheduleExpressionTimezone: !Ref ScheduleTimezone
+            Input: '{"scope": "florida"}'
 
 Outputs:
   FunctionName:

@@ -27,6 +27,7 @@ import collections
 import json
 import os
 import pathlib
+import re
 import time
 import urllib.request
 
@@ -80,6 +81,12 @@ TOTAL_CAP = 16
 # or those listings return on every run forever.
 COMPANY_CAP = 1
 MESSAGE_CAP = 1900  # Discord rejects at 2000
+# The Florida run says so on the tin: members should know a short digest means
+# Florida is quiet today, not that the bot broke.
+HEADERS = {
+    "usa": "💼 **Daily Career Drops**",
+    "florida": "🌴 **Florida Career Drops**",
+}
 MAX_MESSAGES = 2
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
 
@@ -134,7 +141,14 @@ def _parse_labels(reply, expected):
         if not number.isdigit():
             continue
         if label not in LABELS:
-            raise ClassificationError(f"unknown label {label!r} for item {number}")
+            # Observed live: the model sometimes hedges ("CS/AI"). One hedged
+            # line must not abandon a whole digest — take the first valid label
+            # it names, and only give up if it named none.
+            label = next(
+                (p for p in re.split(r"[^A-Z]+", label) if p in LABELS), None
+            )
+            if label is None:
+                raise ClassificationError(f"unknown label for item {number}")
         found[int(number)] = label
     missing = [i for i in range(1, expected + 1) if i not in found]
     if missing:
@@ -225,6 +239,30 @@ def is_us_location(loc):
     return tail in US_STATES
 
 
+FL_CITY = re.compile(r",\s*FL\b|\bflorida\b", re.IGNORECASE)
+
+
+def is_florida(listing):
+    """True when any listed location is in Florida. Deliberately strict —
+    'Remote' does not count, because the point of the Florida digest is roles
+    members can take without leaving Miami."""
+    return any(FL_CITY.search(str(x)) for x in (listing.get("locations") or []))
+
+
+def lead_with_florida(listing):
+    """Reorder a listing's locations so a Florida site renders first.
+
+    Listings are often multi-city, and format_line shows locations[0]. Without
+    this the Florida digest can render 'Honolulu, HI' for a role that matched
+    on its Tampa site, which reads as a broken bot."""
+    locations = listing.get("locations") or []
+    for i, place in enumerate(locations):
+        if FL_CITY.search(str(place)):
+            listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
+            return listing
+    return listing
+
+
 def is_eligible(listing, now):
     """Live, visible, undergrad-friendly, US-based, recent enough."""
     if not listing.get("active") or not listing.get("is_visible"):
@@ -313,7 +351,7 @@ def format_line(listing):
     return row
 
 
-def build_messages(chosen):
+def build_messages(chosen, scope="usa"):
     """Render the digest as ONE MESSAGE PER SECTION (up to MAX_MESSAGES),
     each under MESSAGE_CAP. Sections used to flow into shared chunks, which
     let a full Internships block eat the whole char budget and silently drop
@@ -328,7 +366,7 @@ def build_messages(chosen):
         picks = chosen.get(section, [])
         if not picks or len(messages) >= MAX_MESSAGES:
             continue
-        lines = ["💼 **Daily Career Drops**", ""] if not messages else []
+        lines = [HEADERS.get(scope, HEADERS["usa"]), ""] if not messages else []
         lines.append(f"**{section}**")
         block = "\n".join(lines)
         rows = 0
@@ -398,11 +436,23 @@ def mark_seen(ids):
         print(f"Seen-table write failed (continuing): {e}")
 
 
+SCOPES = {"usa", "florida"}
+
+
 def lambda_handler(event, context):
     if not CAREER_WEBHOOK_URL and not DRY_RUN:
         # Deploys stay green before the #career webhook parameter exists.
         print("CAREER_WEBHOOK_URL unset — career digest inert, skipping.")
         return {"statusCode": 200, "skipped": "no webhook configured"}
+
+    # EventBridge passes {"scope": "..."} per schedule: the morning run is
+    # nationwide, the afternoon run is Florida-only (we are a Miami school, and
+    # local roles need no relocation). Unknown/missing = usa, the safe default.
+    scope = (event or {}).get("scope", "usa")
+    if scope not in SCOPES:
+        print(f"Unknown scope {scope!r} — falling back to usa")
+        scope = "usa"
+    print(f"scope: {scope}")
 
     now = time.time()
     unseen_by_section = {}
@@ -416,6 +466,8 @@ def lambda_handler(event, context):
             print(f"Fetch failed for {section} (skipping section): {e}")
             continue
         candidates = [x for x in listings if is_eligible(x, now)]
+        if scope == "florida":
+            candidates = [lead_with_florida(x) for x in candidates if is_florida(x)]
         ids = [x["id"] for x in candidates]
         unseen_ids = ids if DRY_RUN else filter_unseen(ids)
         unseen = [x for x in candidates if x["id"] in unseen_ids]
@@ -446,7 +498,7 @@ def lambda_handler(event, context):
             mark_seen(marks)  # still burn the NONE rejections
         return {"statusCode": 200, "posted": 0}
 
-    messages = build_messages(chosen)
+    messages = build_messages(chosen, scope)
     for i, message in enumerate(messages, 1):
         print(f"Digest chunk {i}/{len(messages)} ({len(message)} chars):\n{message}")
 
