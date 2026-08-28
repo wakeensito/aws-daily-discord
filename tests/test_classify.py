@@ -79,13 +79,13 @@ class TestClassifyTitles:
 
 
 class TestFilterRelevant:
-    def test_drops_none_but_still_marks_everything(self, monkeypatch):
-        """The invariant: dropping from DISPLAY must never shrink the mark set,
-        or dropped listings return on every future run forever."""
+    def test_returns_only_rejected_ids_for_marking(self, monkeypatch):
+        """Only NONE-labelled listings are burned. A relevant listing that
+        simply didn't fit stays unseen so it can fill a slot on a later run."""
         monkeypatch.setattr(career, "classify_titles", lambda xs: ["CS", "NONE"])
-        kept, to_mark = career.filter_relevant([listing(1), listing(2)])
+        kept, rejected = career.filter_relevant([listing(1), listing(2)])
         assert [x["id"] for x in kept] == ["id-1"]
-        assert set(to_mark) == {"id-1", "id-2"}
+        assert rejected == ["id-2"], "relevant-but-unshown must NOT be marked"
 
     def test_empty_input_is_not_an_error(self, monkeypatch):
         monkeypatch.setattr(career, "classify_titles", lambda xs: [])
@@ -100,7 +100,22 @@ class TestFilterRelevant:
             return ["CS"] * len(xs)
 
         monkeypatch.setattr(career, "classify_titles", fake)
-        kept, to_mark = career.filter_relevant([listing(i) for i in range(10)])
+        kept, rejected = career.filter_relevant([listing(i) for i in range(10)])
         assert seen == [3], "only the top CLASSIFY_LIMIT are sent to the model"
         assert len(kept) == 3
-        assert len(to_mark) == 10, "everything unseen is still marked"
+        assert rejected == [], "unclassified listings stay unseen as backlog"
+
+
+class TestBacklog:
+    def test_marks_shown_and_rejected_only(self):
+        """The whole point: a relevant listing squeezed out by the caps is NOT
+        consumed, so tomorrow it can fill a slot instead of being lost."""
+        chosen = {"Internships": [listing(1)], "New Grad": [listing(2)]}
+        rejected = {"Internships": ["id-9"], "New Grad": []}
+        assert career.ids_to_mark(chosen, rejected) == ["id-1", "id-2", "id-9"]
+
+    def test_a_relevant_listing_that_did_not_fit_is_never_marked(self):
+        chosen = {"Internships": [listing(1)], "New Grad": []}
+        marked = career.ids_to_mark(chosen, {"Internships": [], "New Grad": []})
+        assert "id-2" not in marked, "backlog listing must survive to a later run"
+        assert marked == ["id-1"]
