@@ -24,6 +24,7 @@ writes (local preview: `python local_run.py --career`).
 import collections
 import json
 import os
+import pathlib
 import time
 import urllib.request
 
@@ -79,6 +80,101 @@ COMPANY_CAP = 1
 MESSAGE_CAP = 1900  # Discord rejects at 2000
 MAX_MESSAGES = 2
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
+
+# --- Relevance gate (2026-08-28) -------------------------------------------
+# The feed carries NO job description; `title` is the only field describing
+# the work, and a regex over it was rejected ("infrastructure" matched Data
+# Center Technicians, "security" matched alarm installers). Nova Micro reads
+# the title instead and answers one of LABELS. Only NONE-vs-not changes what
+# is posted; the positive labels exist so the logs show what the feed held.
+LABELS = frozenset({"CYBER", "IT", "CS", "AI", "PM", "SOLNS", "NONE"})
+BATCH_SIZE = 40  # 40 titles measured at ~690 in / ~190 out tokens, ~1s
+CLASSIFY_LIMIT = 80  # per section; 8 slots survive company-capping and NONE
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
+PROMPT_PATH = pathlib.Path(__file__).with_name("prompts") / "classify_titles.txt"
+
+
+class ClassificationError(Exception):
+    """Raised for any classification failure. Callers must abandon the run:
+    posting a partially-classified digest would show exactly the noise the
+    gate exists to remove, and marking it seen would consume those listings
+    forever."""
+
+
+def _load_prompt():
+    return PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _converse(text):
+    """The only Bedrock touchpoint — tests replace this, so the offline suite
+    needs no network, no credentials, and no mocking library."""
+    client = boto3.client("bedrock-runtime")
+    response = client.converse(
+        modelId=BEDROCK_MODEL_ID,
+        system=[{"text": _load_prompt()}],
+        messages=[{"role": "user", "content": [{"text": text}]}],
+        inferenceConfig={"maxTokens": 1200, "temperature": 0},
+    )
+    return response["output"]["message"]["content"][0]["text"]
+
+
+def _parse_labels(reply, expected):
+    """Pull `N:LABEL` lines out of a reply, tolerating prose and blank lines
+    that small models pad with. Every position must be present and valid —
+    a partial answer is a failure, never a silent gap."""
+    found = {}
+    for line in reply.splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        number, _, label = line.partition(":")
+        number, label = number.strip().rstrip("."), label.strip().upper()
+        if not number.isdigit():
+            continue
+        if label not in LABELS:
+            raise ClassificationError(f"unknown label {label!r} for item {number}")
+        found[int(number)] = label
+    missing = [i for i in range(1, expected + 1) if i not in found]
+    if missing:
+        raise ClassificationError(f"missing labels for items {missing}")
+    return [found[i] for i in range(1, expected + 1)]
+
+
+def classify_titles(listings):
+    """One label per listing, index-aligned. Raises ClassificationError on any
+    Bedrock error or malformed reply."""
+    labels = []
+    for start in range(0, len(listings), BATCH_SIZE):
+        batch = listings[start : start + BATCH_SIZE]
+        text = "\n".join(
+            f"{i}. {x.get('company_name', '?')} | {x.get('title', '?')}"
+            for i, x in enumerate(batch, 1)
+        )
+        try:
+            reply = _converse(text)
+        except ClassificationError:
+            raise
+        except Exception as e:  # every failure is abandon-the-run
+            raise ClassificationError(f"Bedrock call failed: {e}") from e
+        labels += _parse_labels(reply, len(batch))
+    return labels
+
+
+def filter_relevant(candidates):
+    """Classify the top CLASSIFY_LIMIT candidates and drop the NONE ones.
+
+    Returns (kept, ids_to_mark). ids_to_mark is EVERY input id, including the
+    dropped ones and the ones past CLASSIFY_LIMIT — narrowing it would make
+    those listings resurface on every run forever."""
+    ids_to_mark = [x["id"] for x in candidates]
+    if not candidates:
+        return [], ids_to_mark
+    head = candidates[:CLASSIFY_LIMIT]
+    labels = classify_titles(head)
+    counts = collections.Counter(labels)
+    print(f"  classified {len(head)}: {dict(counts)}")
+    kept = [x for x, label in zip(head, labels, strict=True) if label != "NONE"]
+    return kept, ids_to_mark
 
 
 def fetch_listings(url):
