@@ -239,6 +239,37 @@ class TestDigestMessage:
             assert "[apply](" in m, f"header-only message with no listings: {m!r}"
 
 
+class TestOtherPostingsCount:
+    def test_row_shows_count_of_a_companys_suppressed_postings(self):
+        row = career.format_line(listing(1, company="Disney", _suppressed=25))
+        assert row.endswith("*(+25 more)*")
+        assert "**Disney**" in row
+
+    def test_row_unchanged_when_company_has_only_one_posting(self):
+        assert "more)*" not in career.format_line(listing(1, company="Disney"))
+        assert "more)*" not in career.format_line(
+            listing(2, company="Disney", _suppressed=0)
+        )
+
+    def test_plan_digest_annotates_how_many_were_suppressed(self):
+        unseen = {
+            "Internships": [listing(i, company="Disney") for i in range(6)]
+            + [listing(100, company="Solo")],
+            "New Grad": [],
+        }
+        chosen, _, _ = career.plan_digest(unseen)
+        by_company = {x["company_name"]: x for x in chosen["Internships"]}
+        assert by_company["Disney"]["_suppressed"] == 5
+        assert by_company["Solo"]["_suppressed"] == 0
+
+    def test_suffix_counts_against_the_message_cap(self, monkeypatch):
+        """The suffix must go through the same fit check as the row itself."""
+        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
+        picks = [listing(i, company=f"Co{i}", _suppressed=99) for i in range(8)]
+        msgs = career.build_messages({"Internships": picks, "New Grad": []})
+        assert all(len(m) <= career.MESSAGE_CAP for m in msgs)
+
+
 class TestEmbedSuppression:
     def test_career_payload_suppresses_link_previews(self):
         import discord_client as dc
