@@ -264,6 +264,39 @@ def is_florida(listing):
     return any(FL_CITY.search(str(x)) for x in (listing.get("locations") or []))
 
 
+# Miami-Dade first, then the rest of the tri-county area (commutable), then
+# the rest of the state. We are a Miami school: a local role a week old beats
+# a Jacksonville role posted this morning.
+MIAMI_DADE = re.compile(
+    r"\b(miami|miami beach|miami gardens|miami lakes|coral gables|doral|hialeah|"
+    r"brickell|aventura|kendall|homestead|cutler bay|pinecrest|sweetwater|"
+    r"north miami|coral way)\b",
+    re.IGNORECASE,
+)
+BROWARD_PALM = re.compile(
+    r"\b(fort lauderdale|ft\.? lauderdale|boca raton|west palm beach|palm beach|"
+    r"weston|sunrise|plantation|pompano|deerfield|davie|coral springs|"
+    r"boynton|delray|jupiter|hollywood)\b",
+    re.IGNORECASE,
+)
+
+
+def locality_tier(listing):
+    """0 = Miami-Dade, 1 = Broward/Palm Beach, 2 = rest of Florida."""
+    places = [str(x) for x in (listing.get("locations") or [])]
+    if any(MIAMI_DADE.search(x) for x in places):
+        return 0
+    if any(BROWARD_PALM.search(x) for x in places):
+        return 1
+    return 2
+
+
+def florida_rank_key(listing):
+    """Locality beats recency in the Florida digest — the whole point of a
+    local digest is roles members can take without moving."""
+    return (locality_tier(listing), *rank_key(listing))
+
+
 def lead_with_florida(listing):
     """Reorder a listing's locations so a Florida site renders first.
 
@@ -271,10 +304,14 @@ def lead_with_florida(listing):
     this the Florida digest can render 'Honolulu, HI' for a role that matched
     on its Tampa site, which reads as a broken bot."""
     locations = listing.get("locations") or []
-    for i, place in enumerate(locations):
-        if FL_CITY.search(str(place)):
-            listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
-            return listing
+    # Prefer the city the listing actually ranked on: Miami-Dade, then
+    # Broward/Palm Beach, then any Florida site. Otherwise a Miami-ranked role
+    # can render "Tampa, FL" and look like it was sorted wrong.
+    for pattern in (MIAMI_DADE, BROWARD_PALM, FL_CITY):
+        for i, place in enumerate(locations):
+            if pattern.search(str(place)):
+                listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
+                return listing
     return listing
 
 
@@ -326,13 +363,14 @@ def _cap_per_company(pool):
     return kept
 
 
-def plan_digest(unseen_by_section):
+def plan_digest(unseen_by_section, key=None):
     """Pure selection logic (unit-tested): pick what to show per section,
     respecting per-section caps but redistributing spare capacity up to the
     total cap. Returns (chosen_by_section, ids_to_mark, more_count) — note
     ids_to_mark is EVERY unseen id, shown or not."""
+    key = key or rank_key
     pools = {
-        section: sorted(unseen_by_section.get(section, []), key=rank_key)
+        section: sorted(unseen_by_section.get(section, []), key=key)
         for section, _, _ in SOURCES
     }
     # Selection pools are company-capped; `pools` stays whole for marking.
@@ -498,7 +536,7 @@ def lambda_handler(event, context):
         print(f"{section}: {len(candidates)} eligible, {len(unseen_ids)} unseen")
         # Classify AFTER dedup (never spend tokens on rows that can't be
         # shown) and rank first, so CLASSIFY_LIMIT keeps the best candidates.
-        unseen.sort(key=rank_key)
+        unseen.sort(key=florida_rank_key if scope == "florida" else rank_key)
         try:
             relevant, rejected = filter_relevant(unseen)
         except ClassificationError as e:
@@ -512,7 +550,9 @@ def lambda_handler(event, context):
     if not fetched_any:
         raise RuntimeError("Every listings source failed")
 
-    chosen, _candidate_ids, _more = plan_digest(unseen_by_section)
+    chosen, _candidate_ids, _more = plan_digest(
+        unseen_by_section, florida_rank_key if scope == "florida" else rank_key
+    )
     # Consume only what we POST plus what the gate rejected. Relevant listings
     # that didn't fit stay unseen as backlog for a quieter run.
     marks = ids_to_mark(chosen, rejected_by_section)

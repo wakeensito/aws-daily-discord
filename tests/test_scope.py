@@ -93,3 +93,68 @@ class TestScopeParsing:
 
     def test_scope_is_case_insensitive(self):
         assert career.scope_from({"scope": "Florida"}) == "florida"
+
+
+class TestMiamiPriority:
+    def test_miami_outranks_newer_listings_elsewhere_in_florida(self):
+        """A Miami school: locality beats recency inside the Florida digest.
+        The 3 PM run on 2026-08-28 posted zero Miami rows because Blackstone
+        and BCG were 7-8 days old and lost to fresher Jacksonville listings."""
+        miami_old = {**listing(1, ["Miami, FL"]), "date_posted": 1000}
+        tampa_new = {**listing(2, ["Tampa, FL"]), "date_posted": 9999}
+        ordered = sorted([tampa_new, miami_old], key=career.florida_rank_key)
+        assert ordered[0]["id"] == "id-1"
+
+    def test_broward_sits_between_miami_and_the_rest(self):
+        miami = {**listing(1, ["Miami, FL"]), "date_posted": 1}
+        broward = {**listing(2, ["Fort Lauderdale, FL"]), "date_posted": 1}
+        orlando = {**listing(3, ["Orlando, FL"]), "date_posted": 9999}
+        ordered = sorted([orlando, broward, miami], key=career.florida_rank_key)
+        assert [x["id"] for x in ordered] == ["id-1", "id-2", "id-3"]
+
+    def test_recency_still_breaks_ties_within_a_tier(self):
+        older = {**listing(1, ["Miami, FL"]), "date_posted": 100}
+        newer = {**listing(2, ["Doral, FL"]), "date_posted": 900}
+        ordered = sorted([older, newer], key=career.florida_rank_key)
+        assert ordered[0]["id"] == "id-2"
+
+    def test_nationwide_ranking_is_untouched(self):
+        miami = {**listing(1, ["Miami, FL"]), "date_posted": 100}
+        seattle = {**listing(2, ["Seattle, WA"]), "date_posted": 900}
+        ordered = sorted([miami, seattle], key=career.rank_key)
+        assert ordered[0]["id"] == "id-2", "USA run still ranks by recency"
+
+
+class TestLocalityDisplay:
+    def test_shows_the_city_it_ranked_on(self):
+        x = listing(1, ["Tampa, FL", "Orlando, FL", "Miami, FL"])
+        career.lead_with_florida(x)
+        assert x["locations"][0] == "Miami, FL"
+
+    def test_falls_back_to_any_florida_city(self):
+        x = listing(2, ["Seattle, WA", "Orlando, FL"])
+        career.lead_with_florida(x)
+        assert x["locations"][0] == "Orlando, FL"
+
+
+class TestPlanDigestRespectsKey:
+    def test_florida_key_puts_miami_at_the_top_of_the_block(self):
+        """plan_digest re-sorts internally; without honouring the key it threw
+        the Miami-first ordering away and Miami landed mid-list."""
+        pool = [
+            {**listing(1, ["Tampa, FL"]), "date_posted": 9999, "company_name": "A"},
+            {**listing(2, ["Miami, FL"]), "date_posted": 100, "company_name": "B"},
+            {**listing(3, ["Orlando, FL"]), "date_posted": 5000, "company_name": "C"},
+        ]
+        chosen, _, _ = career.plan_digest(
+            {"Internships": pool, "New Grad": []}, career.florida_rank_key
+        )
+        assert chosen["Internships"][0]["id"] == "id-2"
+
+    def test_default_key_is_unchanged(self):
+        pool = [
+            {**listing(1, ["Tampa, FL"]), "date_posted": 9999, "company_name": "A"},
+            {**listing(2, ["Miami, FL"]), "date_posted": 100, "company_name": "B"},
+        ]
+        chosen, _, _ = career.plan_digest({"Internships": pool, "New Grad": []})
+        assert chosen["Internships"][0]["id"] == "id-1", "USA run: newest first"
