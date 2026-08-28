@@ -439,6 +439,18 @@ def mark_seen(ids):
 SCOPES = {"usa", "florida"}
 
 
+def scope_from(event):
+    """Read the run scope off the EventBridge payload. Anything unexpected —
+    a non-dict event, a missing key, an unknown value — falls back to `usa`
+    rather than taking the digest down over a malformed input."""
+    scope = event.get("scope") if isinstance(event, dict) else None
+    scope = str(scope).strip().lower() if scope else "usa"
+    if scope not in SCOPES:
+        print(f"Unknown scope {scope!r} — falling back to usa")
+        return "usa"
+    return scope
+
+
 def lambda_handler(event, context):
     if not CAREER_WEBHOOK_URL and not DRY_RUN:
         # Deploys stay green before the #career webhook parameter exists.
@@ -448,10 +460,7 @@ def lambda_handler(event, context):
     # EventBridge passes {"scope": "..."} per schedule: the morning run is
     # nationwide, the afternoon run is Florida-only (we are a Miami school, and
     # local roles need no relocation). Unknown/missing = usa, the safe default.
-    scope = (event or {}).get("scope", "usa")
-    if scope not in SCOPES:
-        print(f"Unknown scope {scope!r} — falling back to usa")
-        scope = "usa"
+    scope = scope_from(event)
     print(f"scope: {scope}")
 
     now = time.time()

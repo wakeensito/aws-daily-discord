@@ -73,3 +73,23 @@ class TestFloridaLocationDisplay:
         x = listing(3, ["Seattle, WA", "Austin, TX"])
         career.lead_with_florida(x)
         assert x["locations"][0] == "Seattle, WA"
+
+
+class TestScopeParsing:
+    def test_non_dict_event_does_not_crash(self):
+        """EventBridge sends a dict, but a manual invoke can send anything.
+        A malformed event must fall back to usa, never take the digest down."""
+        for event in (None, [], "florida", 42):
+            assert career.scope_from(event) == "usa"
+
+    def test_unknown_scope_falls_back(self):
+        assert career.scope_from({"scope": "mars"}) == "usa"
+        assert career.scope_from({"scope": None}) == "usa"
+        assert career.scope_from({}) == "usa"
+
+    def test_valid_scopes_pass_through(self):
+        assert career.scope_from({"scope": "florida"}) == "florida"
+        assert career.scope_from({"scope": "usa"}) == "usa"
+
+    def test_scope_is_case_insensitive(self):
+        assert career.scope_from({"scope": "Florida"}) == "florida"
