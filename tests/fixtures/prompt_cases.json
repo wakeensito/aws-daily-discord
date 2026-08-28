@@ -220,5 +220,47 @@
   "title": "Embedded Software Engineer 1",
   "expect": "REL",
   "why": "regression: this was wrongly dropped before"
+ },
+ {
+  "company": "Detroit Lions",
+  "title": "Quantitative Research Intern",
+  "expect": "REL",
+  "why": "sports analytics is data science \u2014 was wrongly dropped for being a non-tech employer"
+ },
+ {
+  "company": "Cleveland Clinic",
+  "title": "Data Scientist - Clinical Analytics",
+  "expect": "REL",
+  "why": "healthcare employer, data science job"
+ },
+ {
+  "company": "Kroger",
+  "title": "Data Analyst - Merchandising",
+  "expect": "REL",
+  "why": "grocery employer, data job"
+ },
+ {
+  "company": "Hoffman Construction",
+  "title": "Data Scientist 1",
+  "expect": "REL",
+  "why": "construction employer, data science job"
+ },
+ {
+  "company": "City of Austin",
+  "title": "Data Analytics Intern - Transportation",
+  "expect": "REL",
+  "why": "government employer, data job"
+ },
+ {
+  "company": "Citadel Securities",
+  "title": "Fundamental Analyst Intern",
+  "expect": "NONE",
+  "why": "the SUBJECT is markets, not data \u2014 stays NONE"
+ },
+ {
+  "company": "Wells Fargo",
+  "title": "Credit Analyst - Commercial Lending",
+  "expect": "NONE",
+  "why": "financial analysis, not data science"
  }
 ]

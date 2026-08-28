@@ -90,13 +90,14 @@ class TestClassifyTitles:
 
 
 class TestFilterRelevant:
-    def test_returns_only_rejected_ids_for_marking(self, monkeypatch):
-        """Only NONE-labelled listings are burned. A relevant listing that
-        simply didn't fit stays unseen so it can fill a slot on a later run."""
+    def test_nothing_is_consumed_by_classification(self, monkeypatch):
+        """Classification is NOT deterministic — the same fixture scores 41-44
+        across runs at temperature 0. A listing dropped today may be kept
+        tomorrow, so dropping must never consume it."""
         monkeypatch.setattr(career, "classify_titles", lambda xs: ["CS", "NONE"])
         kept, rejected = career.filter_relevant([listing(1), listing(2)])
         assert [x["id"] for x in kept] == ["id-1"]
-        assert rejected == ["id-2"], "relevant-but-unshown must NOT be marked"
+        assert rejected == [], "a NONE verdict must not burn the listing"
 
     def test_empty_input_is_not_an_error(self, monkeypatch):
         monkeypatch.setattr(career, "classify_titles", lambda xs: [])
@@ -152,4 +153,4 @@ class TestLabelCaps:
         """A capped HW listing is backlog, not waste — it can run tomorrow."""
         monkeypatch.setattr(career, "classify_titles", lambda xs: ["HW"] * 5)
         _, rejected = career.filter_relevant([listing(i) for i in range(5)])
-        assert rejected == [], "only NONE is consumed"
+        assert rejected == [], "nothing but a posted row is consumed"
