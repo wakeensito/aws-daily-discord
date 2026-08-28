@@ -81,10 +81,12 @@ TOTAL_CAP = 16
 # or those listings return on every run forever.
 COMPANY_CAP = 1
 MESSAGE_CAP = 1900  # Discord rejects at 2000
-# The Florida run says so on the tin: members should know a short digest means
-# Florida is quiet today, not that the bot broke.
+# Both runs are daily, so the headers contrast on GEOGRAPHY, not frequency —
+# "Daily" vs "Florida" wrongly implied the Florida drop wasn't daily. Same
+# briefcase on the national run: it's the channel's mark, and swapping it
+# would make the two posts look like different bots.
 HEADERS = {
-    "usa": "💼 **Daily Career Drops**",
+    "usa": "💼 **National Career Drops**",
     "florida": "🌴 **Florida Career Drops**",
 }
 MAX_MESSAGES = 2

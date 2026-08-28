@@ -149,7 +149,7 @@ class TestDigestMessage:
         msgs = career.build_messages(dict(self.CHOSEN))
         assert len(msgs) == 2, "one message per populated section"
         msg = "\n".join(msgs)
-        assert msgs[0].startswith("💼 **Daily Career Drops**\n")
+        assert msgs[0].startswith("💼 **National Career Drops**\n")
         assert "new today" not in msg, "no counts in the header"
         assert "**Internships**" in msgs[0] and "**New Grad**" in msgs[1]
         assert "⭐ **Amazon**" in msg and "• **Stripe**" in msg
@@ -190,8 +190,8 @@ class TestDigestMessage:
         msgs = career.build_messages(big)
         assert 1 <= len(msgs) <= career.MAX_MESSAGES
         assert all(len(m) <= career.MESSAGE_CAP for m in msgs)
-        assert msgs[0].startswith("💼 **Daily Career Drops**")
-        assert "Daily Career Drops" not in "".join(msgs[1:]), "header once"
+        assert msgs[0].startswith("💼 **National Career Drops**")
+        assert "Career Drops" not in "".join(msgs[1:]), "header once"
 
 
     def test_new_grad_section_survives_a_full_internship_block(self, monkeypatch):

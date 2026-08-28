@@ -42,7 +42,7 @@ class TestScopedHeaders:
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
         picks = {"Internships": [listing(1, ["Miami, FL"])], "New Grad": []}
         assert career.build_messages(picks, "usa")[0].startswith(
-            "\U0001f4bc **Daily Career Drops**"
+            "\U0001f4bc **National Career Drops**"
         )
         assert career.build_messages(picks, "florida")[0].startswith(
             "\U0001f334 **Florida Career Drops**"
@@ -52,7 +52,7 @@ class TestScopedHeaders:
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
         picks = {"Internships": [listing(1, ["Miami, FL"])], "New Grad": []}
         msg = career.build_messages(picks, "mars")[0]
-        assert msg.startswith("\U0001f4bc **Daily Career Drops**")
+        assert msg.startswith("\U0001f4bc **National Career Drops**")
 
 
 class TestFloridaLocationDisplay:
