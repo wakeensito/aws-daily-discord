@@ -10,9 +10,10 @@ Design rules (docs/plan 2026-08-27):
     and sort first (club identity as a highlight, never a gate).
   - Undergrad-friendly: listings whose `degrees` requires an advanced degree
     (no "Bachelor's") are dropped — that's Simplify's per-listing flag.
-  - One message, ~12 listings across two sections, footer counts the rest.
+  - ONE message, as many rows as fit (~9-11) from the best ~18 candidates;
+    plain header, no counts, no outbound links, single role ping.
   - Everything unseen gets marked seen each run, posted or not: tomorrow is
-    strictly new drops; the tail lives behind the footer links.
+    strictly new drops.
   - Zero unseen -> no post at all (silence beats "nothing today" noise).
 
 DRY_RUN=1 prints the digest and skips both the webhook and the seen-table
@@ -58,13 +59,16 @@ SOURCES = [
 ]
 
 WINDOW_DAYS = 14  # only consider recent postings; older unseen ones age out
-# 18 rows don't fit one Discord message (apply URLs are 100-180 chars each,
-# 2000-char cap) — the digest sends as up to MAX_MESSAGES back-to-back
-# chunks; the role ping rides only the last one.
+# One message, always (user call: a couple of rows short beats a second
+# message). The caps below bound SELECTION — ranking picks the best ~18
+# candidates (AWS-starred first, then newest) and the chunker fits what a
+# single message holds (typically 9-11 rows; apply URLs are 100-180 chars
+# each against Discord's 2000-char cap). The tail drops silently and is
+# marked seen, so nothing repeats.
 SECTION_CAPS = {"Internships": 12, "New Grad": 6}
 TOTAL_CAP = 18
 MESSAGE_CAP = 1900  # Discord rejects at 2000
-MAX_MESSAGES = 2
+MAX_MESSAGES = 1
 SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
 
 
