@@ -61,9 +61,14 @@ HW    - hardware and computer engineering, which computer-engineering members do
 NONE  - anything none of these majors would apply to. This includes: mechanical, civil,
         chemical, industrial, aerospace, optical and materials engineering; hardware test
         and lab TECHNICIANS; assemblers, installers, field service, maintenance and repair,
-        operators, cabling; manufacturing and process engineering; quantitative trading and quantitative
+        operators, cabling; manufacturing and process engineering;
+        (every word in this list describes THE JOB, never the employer's industry — a
+        hospital hiring a Data Scientist is AI and a hospital hiring a Nurse is NONE; a
+        construction firm hiring a Data Scientist is AI and the same firm hiring a Site
+        Superintendent is NONE) quantitative trading and quantitative
         research; pure sales quota roles, marketing, recruiting, HR, finance, accounting,
-        actuarial, legal, retail, hospitality and clinical roles.
+        actuarial, legal, retail, hospitality, and hands-on clinical care roles such as nurse,
+        technologist, therapist or care coordinator.
 
 ## Acronym traps - read carefully
 - "SOC" means Security Operations Center ONLY when the surrounding words are about
@@ -83,6 +88,14 @@ NONE  - anything none of these majors would apply to. This includes: mechanical,
   technician, life safety - is NONE, not CYBER.
 - "Analyst" alone is not technical. "Investment Analyst", "Financial Analyst" -> NONE.
   "Security Analyst" -> CYBER. "Data Analyst" -> AI. "Business Systems Analyst" -> PM.
+- DATA SCIENCE IS DATA SCIENCE WHEREVER IT HAPPENS. A sports team, hospital, grocery
+  chain, airline, government agency, museum or construction firm hiring a Data Scientist,
+  Data Analyst, Quantitative Research Intern, Analytics Engineer or Machine Learning
+  Engineer is AI. Every one of those is a computer science job; the employer's industry
+  is irrelevant. Do NOT answer NONE just because the company is not a tech company.
+  Only the SUBJECT makes it NONE: analysing investments, markets or financial statements
+  is NONE ("Investment Analyst", "Fundamental Analyst", "Credit Analyst"); analysing
+  data, players, patients, logistics or customers is AI.
 - "Manager" alone is not PM. It is PM only when what is managed is technology.
 - Anything named "Solutions Architect", "Solutions Engineer", "Sales Engineer", "Technical
   Account Manager", "Customer Engineer", "Consultant" or "Consulting Analyst" in a

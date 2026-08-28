@@ -187,24 +187,24 @@ def classify_titles(listings):
 def filter_relevant(candidates):
     """Classify the top CLASSIFY_LIMIT candidates and drop the NONE ones.
 
-    Returns (kept, rejected_ids). rejected_ids holds ONLY the NONE-labelled
-    listings — they are permanently unwanted, and marking them stops us paying
-    to re-classify the same Panel Technician every run.
+    Returns (kept, rejected_ids). rejected_ids is ALWAYS EMPTY: classification
+    is not deterministic — the same 44-case fixture scores 41-44 across runs at
+    temperature 0 — so a NONE verdict is a coin flip we must not act on
+    permanently. A listing dropped today can be kept tomorrow.
 
-    Everything else stays unmarked on purpose. A relevant listing that merely
-    did not fit today's 8 slots is BACKLOG, not waste: it stays unseen and can
-    fill a slot on a quieter day. Marking it here is what used to burn ~1,150
-    listings a day."""
+    Nothing here consumes anything. Only a row that actually gets POSTED is
+    marked seen. The cost is re-classifying previously-rejected listings on
+    later runs, which is a few tokens; the alternative is destroying a good
+    listing because the model wavered once."""
     if not candidates:
         return [], []
     head = candidates[:CLASSIFY_LIMIT]
     labels = classify_titles(head)
     counts = collections.Counter(labels)
     print(f"  classified {len(head)}: {dict(counts)}")
-    kept, rejected, used = [], [], collections.Counter()
+    kept, used = [], collections.Counter()
     for listing, label in zip(head, labels, strict=True):
         if label == "NONE":
-            rejected.append(listing["id"])
             continue
         if used[label] >= LABEL_CAPS.get(label, len(head)):
             # Over its share for this run. NOT rejected — it stays unseen and
@@ -213,7 +213,7 @@ def filter_relevant(candidates):
         used[label] += 1
         listing["_label"] = label
         kept.append(listing)
-    return kept, rejected
+    return kept, []
 
 
 def ids_to_mark(chosen, rejected_by_section):
