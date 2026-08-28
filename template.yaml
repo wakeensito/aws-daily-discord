@@ -55,8 +55,14 @@ Parameters:
     Type: String
     Default: cron(0 9 * * ? *)
     Description: >-
-      Daily career digest time (9 AM in ScheduleTimezone — morning drop,
-      apply-early advantage; the fun fact owns noon).
+      Morning career digest (9 AM in ScheduleTimezone — apply-early
+      advantage; the fun fact owns noon).
+  CareerAfternoonScheduleExpression:
+    Type: String
+    Default: cron(0 15 * * ? *)
+    Description: >-
+      Afternoon career digest (3 PM) — run-based dedup makes it
+      incremental: it posts only listings that dropped since 9 AM.
 
 Resources:
   TopicsTable:
@@ -155,6 +161,16 @@ Resources:
           Properties:
             Name: !Sub '${AWS::StackName}-career-schedule'
             ScheduleExpression: !Ref CareerScheduleExpression
+            ScheduleExpressionTimezone: !Ref ScheduleTimezone
+        # Second daily digest (~50-90 eligible listings/day is plenty for
+        # two): the seen-table dedup is run-based, so this posts only what
+        # appeared since the morning run. Day rhythm: 9 AM careers, noon
+        # fun fact ("learn something on lunch"), 3 PM careers.
+        AfternoonSchedule:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub '${AWS::StackName}-career-schedule-pm'
+            ScheduleExpression: !Ref CareerAfternoonScheduleExpression
             ScheduleExpressionTimezone: !Ref ScheduleTimezone
 
 Outputs:
