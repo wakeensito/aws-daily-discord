@@ -24,6 +24,13 @@ import lambda_function
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--career":
+        # Career digest preview: fetches live Simplify data, treats every
+        # eligible listing as unseen, prints the digest, posts nothing.
+        import career_digest
+
+        career_digest.lambda_handler({}, None)
+        return
     if len(sys.argv) > 1:
         wanted = sys.argv[1].lower()
         matches = [

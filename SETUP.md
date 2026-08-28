@@ -82,6 +82,21 @@ Expect `ENABLED`, `cron(0 12 * * ? *)`, timezone `America/New_York` — noon
 Miami every day, unaffected by DST. Then confirm the next day's post lands
 unattended.
 
+## Career digest (second bot)
+
+Ships inert: until `CareerWebhookUrl` is supplied, the career Lambda logs
+"skipping" and does nothing, so deploys never block on it. To activate:
+
+1. #career channel → Edit Channel → Integrations → Webhooks → New Webhook →
+   Copy URL (webhooks are channel-bound; no app ID or bot token involved).
+2. One deploy: `sam deploy --parameter-overrides CareerWebhookUrl=<url>`
+   (CloudFormation remembers it afterward, like the fun-fact webhook).
+3. Smoke: `aws lambda invoke --function-name daily-discord-career
+   --payload '{}' out.json` → digest lands in #career; invoke again →
+   no post (everything's been marked seen).
+4. Optional ping: redeploy with `CareerRoleId=<role id>` (off by default —
+   a daily digest shouldn't ping).
+
 ## Changing things
 
 - **Post time**: `ScheduleExpression` / `ScheduleTimezone` parameters

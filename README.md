@@ -1,4 +1,29 @@
-# Daily Cloud Fun Fact bot
+# Daily Discord bots (AWS Student Builder)
+
+Two scheduled bots in one SAM stack.
+
+## Bot 2: Career digest (#career)
+
+Every day at **9 AM Miami**, a digest of internships and new-grad roles
+posted since the last run — real listings from the community-maintained
+[SimplifyJobs repos](https://github.com/SimplifyJobs/Summer2026-Internships)
+(the continuation of the Pitt CSC list; public JSON, no account or API key,
+apply links go straight to employer application systems). One message,
+~12 newest listings in two sections, "…and X more" footer.
+
+- **Open feed, AWS highlight**: no company filtering (member outcomes over
+  brand purity) — Amazon/AWS roles get ⭐ and sort first.
+- **Undergrad-friendly**: listings flagged advanced-degree-only (🎓 in the
+  source repo) are dropped.
+- **Strictly new**: a seen-listings table (180-day TTL) dedups every run;
+  everything unseen is marked, shown or not — tomorrow is only new drops.
+  No new listings → no post (silence over noise).
+- Season note: the internships source URL is per-season
+  (`Summer2026-Internships`) — bump it in `src/career_digest.py` when the
+  next season's repo opens.
+- Preview locally: `python local_run.py --career` (no post, no writes).
+
+## Bot 1: Daily Cloud Fun Fact (#daily-cloud)
 
 Automates the **#daily-cloud** channel for the AWS Student Builder Discord:
 every day at noon (America/New_York, DST-proof) it picks an AWS topic

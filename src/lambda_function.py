@@ -21,11 +21,12 @@ rotation write — the local preview path (see local_run.py).
 import json
 import os
 import random
-import urllib.request
 from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
+
+from discord_client import clip, post_to_discord
 
 dynamodb = boto3.resource("dynamodb")
 bedrock = boto3.client("bedrock-runtime")
@@ -201,18 +202,6 @@ def generate_content(entry):
     raise RuntimeError(f"Model never produced valid content: {last_error}")
 
 
-def clip(text, limit):
-    """Truncate at a sentence boundary if possible, else at a word."""
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    for boundary in (". ", "! ", "? "):
-        idx = cut.rfind(boundary)
-        if idx > limit // 2:
-            return cut[: idx + 1].rstrip()
-    return cut[: cut.rfind(" ")].rstrip() + "…"
-
-
 def exam_label(exams):
     """Deterministic 'AIF & CCP & SAA' label in fixed order — from data."""
     ordered = [tag for tag in EXAM_ORDER if tag in exams]
@@ -247,29 +236,6 @@ def assemble_message(entry, content):
     return message
 
 
-def post_to_discord(message):
-    payload = {
-        "content": message,
-        # Nothing pings unless explicitly allowed; the role ping is the one
-        # exception when configured.
-        "allowed_mentions": {"parse": [], "roles": [ROLE_ID] if ROLE_ID else []},
-    }
-    request = urllib.request.Request(
-        DISCORD_WEBHOOK_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            # Discord (Cloudflare) 403s Python's default urllib User-Agent;
-            # a real UA is required, not a nicety.
-            "User-Agent": "DailyCloudFunFactBot/1.0 (+github.com/wakeensito/aws-daily-discord)",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status not in (200, 204):
-            raise RuntimeError(f"Discord webhook failed: {response.status}")
-
-
 def lambda_handler(event, context):
     topics = load_topics()
     used = get_used_topics()
@@ -289,6 +255,6 @@ def lambda_handler(event, context):
         print("DRY_RUN=1 — not posting, not recording rotation.")
         return {"statusCode": 200, "dryRun": True, "topic": entry["topic"]}
 
-    post_to_discord(message)
+    post_to_discord(DISCORD_WEBHOOK_URL, message, ROLE_ID)
     record_topic_usage(entry["topic"])
     return {"statusCode": 200, "topic": entry["topic"]}

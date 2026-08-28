@@ -36,6 +36,27 @@ Parameters:
     Description: >-
       Noon Miami year-round — the scheduler handles DST, so the post hour
       never drifts.
+  CareerWebhookUrl:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >-
+      Discord webhook URL for the #career channel. Default empty so the
+      stack (and CI deploys) work before the webhook exists — the career
+      Lambda logs-and-skips until it's supplied via one
+      --parameter-overrides deploy. Never written to any tracked file.
+  CareerRoleId:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional Discord role ID to ping on career digests. Empty = no ping
+      (default — the digest is recurring content, not an announcement).
+  CareerScheduleExpression:
+    Type: String
+    Default: cron(0 9 * * ? *)
+    Description: >-
+      Daily career digest time (9 AM in ScheduleTimezone — morning drop,
+      apply-early advantage; the fun fact owns noon).
 
 Resources:
   TopicsTable:
@@ -90,10 +111,59 @@ Resources:
             ScheduleExpression: !Ref ScheduleExpression
             ScheduleExpressionTimezone: !Ref ScheduleTimezone
 
+  # ── Career digest (second bot, same stack) ────────────────────────────
+  SeenListingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-seen-listings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      # TTL on purpose here (unlike the topics table): a listing seen 180
+      # days ago belongs to a dead season; expiring rows keeps the table
+      # small and the daily batch-get cheap.
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  CareerDigestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-career'
+      CodeUri: src/
+      Handler: career_digest.lambda_handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      # Fetches ~10MB of listings JSON from raw.githubusercontent.com.
+      Timeout: 90
+      MemorySize: 256
+      Environment:
+        Variables:
+          SEEN_TABLE_NAME: !Ref SeenListingsTable
+          CAREER_WEBHOOK_URL: !Ref CareerWebhookUrl
+          CAREER_ROLE_ID: !Ref CareerRoleId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SeenListingsTable
+      Events:
+        DailySchedule:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub '${AWS::StackName}-career-schedule'
+            ScheduleExpression: !Ref CareerScheduleExpression
+            ScheduleExpressionTimezone: !Ref ScheduleTimezone
+
 Outputs:
   FunctionName:
     Description: Invoke this to post on demand (or use DRY_RUN=1 locally)
     Value: !Ref DailyPostFunction
+  CareerFunctionName:
+    Description: The career digest Lambda
+    Value: !Ref CareerDigestFunction
   TopicsTableName:
     Description: Topic-rotation table
     Value: !Ref TopicsTable
