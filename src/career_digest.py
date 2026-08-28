@@ -21,6 +21,7 @@ DRY_RUN=1 prints the digest and skips both the webhook and the seen-table
 writes (local preview: `python local_run.py --career`).
 """
 
+import collections
 import json
 import os
 import time
@@ -137,7 +138,16 @@ def rank_key(listing):
 
 
 def _cap_per_company(pool):
-    """Keep at most COMPANY_CAP listings per company, preserving rank order."""
+    """Keep at most COMPANY_CAP listings per company, preserving rank order.
+
+    Each kept listing is annotated with `_suppressed`: how many of that
+    company's other eligible listings this row stands in for. The digest
+    renders it as "(+N more)" so a reader can tell that Disney has 25 open
+    roles today and go look, rather than assuming the one row is all there is.
+    """
+    totals = collections.Counter(
+        str(x.get("company_name", "")).strip().lower() for x in pool
+    )
     counts = {}
     kept = []
     for listing in pool:
@@ -145,6 +155,7 @@ def _cap_per_company(pool):
         if counts.get(name, 0) >= COMPANY_CAP:
             continue
         counts[name] = counts.get(name, 0) + 1
+        listing["_suppressed"] = totals[name] - counts[name]
         kept.append(listing)
     return kept
 
@@ -182,7 +193,11 @@ def format_line(listing):
     locations = listing.get("locations") or []
     where = str(locations[0]).strip()[:30] if locations else "—"
     url = listing.get("url", "")
-    return f"{star}**{company}** — {title} — {where} — [apply]({url})"
+    row = f"{star}**{company}** — {title} — {where} — [apply]({url})"
+    others = listing.get("_suppressed") or 0
+    if others > 0:
+        row += f"  *(+{others} more)*"
+    return row
 
 
 def build_messages(chosen):
