@@ -282,8 +282,14 @@ BROWARD_PALM = re.compile(
 
 
 def locality_tier(listing):
-    """0 = Miami-Dade, 1 = Broward/Palm Beach, 2 = rest of Florida."""
-    places = [str(x) for x in (listing.get("locations") or [])]
+    """0 = Miami-Dade, 1 = Broward/Palm Beach, 2 = rest of Florida.
+
+    Only Florida locations are considered: several tier names exist in other
+    states ("Hollywood, CA", "Jupiter, NC"), and a multi-city listing that
+    happens to include one would otherwise be ranked as if it were local."""
+    places = [
+        str(x) for x in (listing.get("locations") or []) if FL_CITY.search(str(x))
+    ]
     if any(MIAMI_DADE.search(x) for x in places):
         return 0
     if any(BROWARD_PALM.search(x) for x in places):
@@ -309,7 +315,7 @@ def lead_with_florida(listing):
     # can render "Tampa, FL" and look like it was sorted wrong.
     for pattern in (MIAMI_DADE, BROWARD_PALM, FL_CITY):
         for i, place in enumerate(locations):
-            if pattern.search(str(place)):
+            if FL_CITY.search(str(place)) and pattern.search(str(place)):
                 listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
                 return listing
     return listing

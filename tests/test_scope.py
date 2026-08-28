@@ -158,3 +158,20 @@ class TestPlanDigestRespectsKey:
         ]
         chosen, _, _ = career.plan_digest({"Internships": pool, "New Grad": []})
         assert chosen["Internships"][0]["id"] == "id-1", "USA run: newest first"
+
+
+class TestLocalityIgnoresOtherStates:
+    def test_hollywood_ca_does_not_count_as_broward(self):
+        """Hollywood, Jupiter and Palm Beach exist in other states. A listing
+        is only local if the tier city is itself a Florida location."""
+        x = listing(1, ["Hollywood, CA", "Tampa, FL"])
+        assert career.locality_tier(x) == 2
+        career.lead_with_florida(x)
+        assert x["locations"][0] == "Tampa, FL"
+
+    def test_real_broward_still_counts(self):
+        assert career.locality_tier(listing(2, ["Hollywood, FL"])) == 1
+        assert career.locality_tier(listing(3, ["Fort Lauderdale, FL"])) == 1
+
+    def test_miami_outside_florida_is_not_tier_zero(self):
+        assert career.locality_tier(listing(4, ["Miami, OK", "Orlando, FL"])) == 2
