@@ -157,18 +157,16 @@ def format_line(listing):
 def build_digest(chosen, more_count):
     total_shown = sum(len(v) for v in chosen.values())
     lines = [f"💼 **Daily Career Drops** — {total_shown + more_count} new today", ""]
-    for section, _, repo_url in SOURCES:
+    for section, _, _repo in SOURCES:
         picks = chosen.get(section, [])
         if not picks:
             continue
         lines.append(f"**{section}**")
         lines += [format_line(x) for x in picks]
         lines.append("")
-    footer_links = " · ".join(f"<{repo}>" for _, _, repo in SOURCES)
-    if more_count > 0:
-        lines.append(f"…and {more_count} more today → {footer_links}")
-    else:
-        lines.append(f"Full lists: {footer_links}")
+    # No "…and X more →" footer links on purpose (user call 2026-08-28):
+    # the digest is the destination — keep members coming to the Discord,
+    # not clicking out to GitHub. The header's total still signals volume.
     if CAREER_ROLE_ID:
         lines += ["", f"<@&{CAREER_ROLE_ID}>"]
     return "\n".join(lines)
