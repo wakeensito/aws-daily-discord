@@ -8,6 +8,8 @@ import sys
 import time
 from typing import ClassVar
 
+import pytest
+
 os.environ.setdefault("SEEN_TABLE_NAME", "test-seen")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -111,16 +113,17 @@ class TestPlanDigest:
         assert set(to_mark) == {f"id-{i}" for i in range(15)}
 
 
-    def test_at_most_one_listing_per_company(self):
+    @pytest.mark.parametrize("section", ["Internships", "New Grad"])
+    def test_at_most_one_listing_per_company(self, section):
         """Disney flooded a real digest with 4 near-identical rows; one company
-        must never take more than COMPANY_CAP slots in a section."""
-        unseen = {
-            "Internships": [listing(i, company="Disney") for i in range(6)]
-            + [listing(100 + i, company=f"Co{i}") for i in range(6)],
-            "New Grad": [],
-        }
+        must never take more than COMPANY_CAP slots. Both sections are capped
+        independently — a regression in either is a regression."""
+        flooded = [listing(i, company="Disney") for i in range(6)]
+        others = [listing(100 + i, company=f"Co{i}") for i in range(6)]
+        unseen = {"Internships": [], "New Grad": []}
+        unseen[section] = flooded + others
         chosen, _, _ = career.plan_digest(unseen)
-        companies = [x["company_name"] for x in chosen["Internships"]]
+        companies = [x["company_name"] for x in chosen[section]]
         assert companies.count("Disney") == career.COMPANY_CAP
         assert len(companies) == len(set(companies)), "one row per company"
 
