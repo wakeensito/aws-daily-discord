@@ -111,7 +111,8 @@ class TestDigestMessage:
     def test_skeleton_and_star(self, monkeypatch):
         monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
         msg = career.build_digest(dict(self.CHOSEN), more_count=5)
-        assert msg.startswith("💼 **Daily Career Drops** — 8 new today")
+        assert msg.startswith("💼 **Daily Career Drops**\n")
+        assert "new today" not in msg, "no counts in the header"
         assert "**Internships**" in msg and "**New Grad**" in msg
         assert "⭐ **Amazon**" in msg and "• **Stripe**" in msg
         assert "[apply](https://jobs.example.com/1)" in msg
