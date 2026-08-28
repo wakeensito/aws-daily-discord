@@ -96,7 +96,13 @@ SEEN_TTL_DAYS = 180  # a season's listing is long dead by then
 # Center Technicians, "security" matched alarm installers). Nova Micro reads
 # the title instead and answers one of LABELS. Only NONE-vs-not changes what
 # is posted; the positive labels exist so the logs show what the feed held.
-LABELS = frozenset({"CYBER", "IT", "CS", "AI", "PM", "SOLNS", "NONE"})
+LABELS = frozenset({"CYBER", "IT", "CS", "AI", "PM", "SOLNS", "HW", "NONE"})
+# Hardware/computer engineering is in scope — the club has computer-engineering
+# members and a lot of hardware work is cloud-adjacent (AWS IoT, Greengrass,
+# edge). But Hardware is the LARGEST category in the new-grad feed (204 of 601
+# in a 14-day window), so uncapped it would take 3 of every 8 rows. Balance,
+# not exclusion.
+LABEL_CAPS = {"HW": 2}
 BATCH_SIZE = 40  # 40 titles measured at ~690 in / ~190 out tokens, ~1s
 CLASSIFY_LIMIT = 80  # per section; 8 slots survive company-capping and NONE
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
@@ -193,9 +199,18 @@ def filter_relevant(candidates):
     labels = classify_titles(head)
     counts = collections.Counter(labels)
     print(f"  classified {len(head)}: {dict(counts)}")
-    kept, rejected = [], []
+    kept, rejected, used = [], [], collections.Counter()
     for listing, label in zip(head, labels, strict=True):
-        (rejected.append(listing["id"]) if label == "NONE" else kept.append(listing))
+        if label == "NONE":
+            rejected.append(listing["id"])
+            continue
+        if used[label] >= LABEL_CAPS.get(label, len(head)):
+            # Over its share for this run. NOT rejected — it stays unseen and
+            # can lead a quieter digest tomorrow.
+            continue
+        used[label] += 1
+        listing["_label"] = label
+        kept.append(listing)
     return kept, rejected
 
 

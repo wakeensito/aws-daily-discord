@@ -51,22 +51,30 @@ SOLNS - customer-facing or advisory TECHNICAL roles - designing, recommending, d
         product. A program manager for missile hardware, construction, manufacturing
         lines, logistics, or retail operations is NONE.
 
-NONE  - anything a Cybersecurity, IT, CS, AI, or IT-project-management undergraduate would
-        not apply to. This includes: electrical, mechanical, civil, chemical, industrial,
-        aerospace, optical and materials engineering; semiconductor, silicon, ASIC, FPGA,
-        RTL, DRAM and chip design, verification or validation; hardware test and lab
-        technicians; assemblers, installers, field service, maintenance and repair;
-        manufacturing and process engineering; quantitative trading and quantitative
+HW    - hardware and computer engineering, which computer-engineering members do study and
+        which increasingly runs on the cloud (AWS IoT, Greengrass, edge): ASIC, FPGA, RTL,
+        VLSI, SoC and chip design or verification; semiconductor and silicon engineering;
+        electrical, electronics and computer hardware engineering; robotics engineering;
+        embedded hardware; IoT and edge devices; hardware validation and test ENGINEERING
+        (an engineer designing the tests, not a technician running them).
+
+NONE  - anything none of these majors would apply to. This includes: mechanical, civil,
+        chemical, industrial, aerospace, optical and materials engineering; hardware test
+        and lab TECHNICIANS; assemblers, installers, field service, maintenance and repair,
+        operators, cabling; manufacturing and process engineering; quantitative trading and quantitative
         research; pure sales quota roles, marketing, recruiting, HR, finance, accounting,
         actuarial, legal, retail, hospitality and clinical roles.
 
 ## Acronym traps - read carefully
 - "SOC" means Security Operations Center ONLY when the surrounding words are about
   security monitoring or analysis. In any hardware, chip, silicon, ASIC, verification,
-  design or semiconductor context, "SoC" means System-on-Chip and the label is NONE.
+  design or semiconductor context, "SoC" means System-on-Chip and the label is HW.
 - "IAM" is Identity and Access Management -> CYBER.
-- "RF", "RFID", "ASIC", "FPGA", "PCB", "VLSI", "DRAM", "NAND", "SerDes" are hardware ->
-  NONE, UNLESS the title also names software or firmware work, in which case CS.
+- "RF", "RFID", "ASIC", "FPGA", "PCB", "VLSI", "DRAM", "NAND", "SerDes" are hardware -> HW,
+  UNLESS the title also names software or firmware work, in which case CS.
+- The line between HW and NONE is ENGINEER versus TECHNICIAN. "ASIC Verification Engineer"
+  is HW. "Electrical Assembly Technician", "Robot Technician", "Data Center Technician" and
+  "Installation Technician" are NONE — hands-on trade work, not an engineering job.
 - Quant roles are IN SCOPE: "Quantitative Developer"/"Quantitative Engineer" -> CS,
   "Quantitative Researcher"/"Quantitative Analyst" -> AI. Only a pure markets job with no
   technical work ("Equity Trader", "Trading Associate") is NONE.
