@@ -189,6 +189,20 @@ class TestDigestMessage:
         assert "**New Grad**" not in joined
 
 
+    def test_section_with_no_room_for_any_row_is_omitted(self, monkeypatch):
+        """A row too long to fit must not leave a header-only message behind."""
+        monkeypatch.setattr(career, "CAREER_ROLE_ID", "")
+        monkeypatch.setattr(career, "MESSAGE_CAP", 60)
+        msgs = career.build_messages(
+            {
+                "Internships": [listing(1, url="https://x/" + "u" * 300)],
+                "New Grad": [listing(2, url="https://y/" + "v" * 300)],
+            }
+        )
+        for m in msgs:
+            assert "[apply](" in m, f"header-only message with no listings: {m!r}"
+
+
 class TestEmbedSuppression:
     def test_career_payload_suppresses_link_previews(self):
         import discord_client as dc

@@ -181,12 +181,15 @@ def build_messages(chosen):
         lines = ["💼 **Daily Career Drops**", ""] if not messages else []
         lines.append(f"**{section}**")
         block = "\n".join(lines)
+        rows = 0
         for listing in picks:
             row = format_line(listing)
             if len(block) + 1 + len(row) > MESSAGE_CAP:
                 break
             block += "\n" + row
-        messages.append(block)
+            rows += 1
+        if rows:  # never emit a header with nothing under it
+            messages.append(block)
 
     if CAREER_ROLE_ID and messages:
         # MESSAGE_CAP leaves 100 chars of headroom under Discord's real
