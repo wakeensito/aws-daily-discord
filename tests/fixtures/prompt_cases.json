@@ -1,0 +1,194 @@
+[
+ {
+  "company": "Qualcomm",
+  "title": "SOC Verification and Methodology Engineer - ASICS Engineering",
+  "expect": "NONE",
+  "why": "SoC means System-on-Chip here, not Security Operations Center"
+ },
+ {
+  "company": "Point72",
+  "title": "Software Developer - Developers",
+  "expect": "REL",
+  "why": "hedge fund hiring a developer is still software"
+ },
+ {
+  "company": "Optiver",
+  "title": "Quantitative Researcher Graduate - 2027 Start",
+  "expect": "NONE",
+  "why": "quant, despite sounding technical"
+ },
+ {
+  "company": "WellSky",
+  "title": "Associate Software Engineer - DevOps Engineer",
+  "expect": "REL",
+  "why": "DevOps must not starve the IT bucket"
+ },
+ {
+  "company": "i2G Systems",
+  "title": "Electronic Security Installer - Special Projects",
+  "expect": "NONE",
+  "why": "physical security, not cyber"
+ },
+ {
+  "company": "SpaceX",
+  "title": "Software Security Engineer New Grad",
+  "expect": "REL",
+  "why": "real security engineering"
+ },
+ {
+  "company": "E2 Optics",
+  "title": "Data Center Infrastructure Technician",
+  "expect": "NONE",
+  "why": "hands-on cabling, not IT administration"
+ },
+ {
+  "company": "Microsoft",
+  "title": "Data Center Technician - Cloud Operations & Innovation",
+  "expect": "NONE",
+  "why": "technician despite 'Cloud Operations'"
+ },
+ {
+  "company": "Micron Technology",
+  "title": "Electrical Engineer New Grad - DRAM Design",
+  "expect": "NONE",
+  "why": "hardware"
+ },
+ {
+  "company": "Boyd Gaming",
+  "title": "Coffee Bar Barista - Java Vegas - On Call",
+  "expect": "NONE",
+  "why": "'Java' is a trap"
+ },
+ {
+  "company": "Booz Allen",
+  "title": "Data Scientist",
+  "expect": "REL",
+  "why": "AI"
+ },
+ {
+  "company": "CSI",
+  "title": "Product Manager - Business Banking & Treasury Management",
+  "expect": "REL",
+  "why": "product management of software"
+ },
+ {
+  "company": "Google",
+  "title": "Associate Product Manager",
+  "expect": "REL",
+  "why": "APM"
+ },
+ {
+  "company": "Amazon",
+  "title": "Technical Program Manager - AWS",
+  "expect": "REL",
+  "why": "TPM"
+ },
+ {
+  "company": "Deloitte",
+  "title": "Technology Consulting Analyst - Systems Implementation",
+  "expect": "REL",
+  "why": "tech consulting, not business consulting"
+ },
+ {
+  "company": "DTCC",
+  "title": "Business Systems Analyst - Oracle Billing Systems",
+  "expect": "REL",
+  "why": "systems analysis"
+ },
+ {
+  "company": "Accenture",
+  "title": "Scrum Master - Agile Delivery",
+  "expect": "REL",
+  "why": "agile delivery role"
+ },
+ {
+  "company": "AWS",
+  "title": "Solutions Engineer - Early Career",
+  "expect": "REL",
+  "why": "presales technical, not sales"
+ },
+ {
+  "company": "AWS",
+  "title": "Associate Solutions Architect - New Grad 2027",
+  "expect": "REL",
+  "why": "the flagship SA path"
+ },
+ {
+  "company": "Salesforce",
+  "title": "Technical Account Manager Associate",
+  "expect": "REL",
+  "why": "'Account Manager' does not make it sales"
+ },
+ {
+  "company": "Accenture",
+  "title": "Technology Analyst - Cloud Practice",
+  "expect": "REL",
+  "why": "KNOWN MISS: generic 'Technology Analyst' over-drops"
+ },
+ {
+  "company": "IBM",
+  "title": "Associate Consultant - Cybersecurity Services",
+  "expect": "REL",
+  "why": "consulting in a security practice"
+ },
+ {
+  "company": "Deloitte",
+  "title": "Human Capital Consultant - Organization Transformation",
+  "expect": "NONE",
+  "why": "consulting, but not technology"
+ },
+ {
+  "company": "EY",
+  "title": "Audit Associate - Assurance",
+  "expect": "NONE",
+  "why": "accounting"
+ },
+ {
+  "company": "Oracle",
+  "title": "Account Executive - Mid Market",
+  "expect": "NONE",
+  "why": "pure quota sales"
+ },
+ {
+  "company": "HubSpot",
+  "title": "Business Development Representative",
+  "expect": "NONE",
+  "why": "pure quota sales"
+ },
+ {
+  "company": "Lockheed Martin",
+  "title": "Program Manager - Missile Systems Production",
+  "expect": "NONE",
+  "why": "program management of hardware"
+ },
+ {
+  "company": "Target",
+  "title": "Store Operations Manager Trainee",
+  "expect": "NONE",
+  "why": "retail operations"
+ },
+ {
+  "company": "Turner Construction",
+  "title": "Project Engineer - Commercial Construction",
+  "expect": "NONE",
+  "why": "construction"
+ },
+ {
+  "company": "Aflac",
+  "title": "Insurance Sales Agent",
+  "expect": "NONE",
+  "why": "sales"
+ },
+ {
+  "company": "ADT",
+  "title": "Residential Installation Technician",
+  "expect": "NONE",
+  "why": "installer"
+ },
+ {
+  "company": "Northrop Grumman",
+  "title": "Embedded Software Engineer",
+  "expect": "REL",
+  "why": "embedded software is CS"
+ }
+]
