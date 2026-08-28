@@ -130,3 +130,26 @@ class TestBacklog:
         marked = career.ids_to_mark(chosen, {"Internships": [], "New Grad": []})
         assert "id-2" not in marked, "backlog listing must survive to a later run"
         assert marked == ["id-1"]
+
+
+class TestLabelCaps:
+    def test_hardware_is_capped_not_excluded(self, monkeypatch):
+        """Computer engineering is in scope, but Hardware is the largest
+        category in the feed — uncapped it takes 3 of every 8 rows."""
+        monkeypatch.setattr(career, "classify_titles",
+                            lambda xs: ["HW"] * 6 + ["CS"] * 4)
+        kept, _ = career.filter_relevant([listing(i) for i in range(10)])
+        labels = [x["_label"] for x in kept]
+        assert labels.count("HW") == career.LABEL_CAPS["HW"]
+        assert labels.count("CS") == 4, "uncapped labels are untouched"
+
+    def test_hardware_still_appears_when_it_is_all_there_is(self, monkeypatch):
+        monkeypatch.setattr(career, "classify_titles", lambda xs: ["HW"] * 5)
+        kept, _ = career.filter_relevant([listing(i) for i in range(5)])
+        assert len(kept) == career.LABEL_CAPS["HW"], "capped, never zero"
+
+    def test_capped_hardware_is_not_marked_seen(self, monkeypatch):
+        """A capped HW listing is backlog, not waste — it can run tomorrow."""
+        monkeypatch.setattr(career, "classify_titles", lambda xs: ["HW"] * 5)
+        _, rejected = career.filter_relevant([listing(i) for i in range(5)])
+        assert rejected == [], "only NONE is consumed"

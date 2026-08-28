@@ -2,8 +2,8 @@
  {
   "company": "Qualcomm",
   "title": "SOC Verification and Methodology Engineer - ASICS Engineering",
-  "expect": "NONE",
-  "why": "SoC means System-on-Chip here, not Security Operations Center"
+  "expect": "REL",
+  "why": "SoC verification is computer engineering \u2014 HW, in scope but capped"
  },
  {
   "company": "Point72",
@@ -50,8 +50,8 @@
  {
   "company": "Micron Technology",
   "title": "Electrical Engineer New Grad - DRAM Design",
-  "expect": "NONE",
-  "why": "hardware"
+  "expect": "REL",
+  "why": "chip design is computer engineering \u2014 HW"
  },
  {
   "company": "Boyd Gaming",
@@ -190,5 +190,35 @@
   "title": "Embedded Software Engineer",
   "expect": "REL",
   "why": "embedded software is CS"
+ },
+ {
+  "company": "Boeing",
+  "title": "Entry Level ASIC/FPGA Verification Engineer - Space Electronics",
+  "expect": "REL",
+  "why": "hardware ENGINEER \u2014 in scope for computer engineering members"
+ },
+ {
+  "company": "Verne Robotics",
+  "title": "Robot Technician",
+  "expect": "NONE",
+  "why": "technician, not engineer \u2014 the HW/NONE line"
+ },
+ {
+  "company": "Obsidian Solutions Group",
+  "title": "Electrical Assembly Technician - J-STD-001 Certified",
+  "expect": "NONE",
+  "why": "assembly technician, hands-on trade work"
+ },
+ {
+  "company": "Amazon",
+  "title": "Embedded Software Engineer - IoT Greengrass",
+  "expect": "REL",
+  "why": "embedded software on cloud services \u2014 CS, must never drop"
+ },
+ {
+  "company": "RTX",
+  "title": "Embedded Software Engineer 1",
+  "expect": "REL",
+  "why": "regression: this was wrongly dropped before"
  }
 ]
