@@ -283,3 +283,147 @@ class TestEmbedSuppression:
 
         payload = dc.build_payload("msg")
         assert "flags" not in payload
+
+
+class TestApplyLinkLocale:
+    """Simplify sometimes captures an ATS URL with the scraper's own locale
+    baked into the path, so the apply page renders in a foreign language.
+    A Blackstone Miami role opened entirely in Simplified Chinese."""
+
+    def test_chinese_locale_is_rewritten_to_english(self):
+        assert career.english_url(
+            "https://blackstone.wd1.myworkdayjobs.com/zh-CN/Blackstone_Campus_Careers/job/Miami/X_45021"
+        ) == (
+            "https://blackstone.wd1.myworkdayjobs.com/en-US/Blackstone_Campus_Careers/job/Miami/X_45021"
+        )
+
+    def test_french_canadian_locale_is_rewritten(self):
+        assert (
+            career.english_url("https://rtx.wd1.myworkdayjobs.com/fr-CA/rec_ext/job/A_1")
+            == "https://rtx.wd1.myworkdayjobs.com/en-US/rec_ext/job/A_1"
+        )
+
+    def test_english_locales_are_left_alone(self):
+        for url in (
+            "https://x.wd1.myworkdayjobs.com/en-US/site/job/A_1",
+            "https://x.wd1.myworkdayjobs.com/en-CA/site/job/A_1",
+        ):
+            assert career.english_url(url) == url
+
+    def test_urls_without_a_locale_segment_are_untouched(self):
+        for url in (
+            "https://boards.greenhouse.io/acme/jobs/123",
+            "https://blackstone.wd1.myworkdayjobs.com/bx_external_site/job/Miami/X_1",
+            "",
+        ):
+            assert career.english_url(url) == url
+
+    def test_locale_is_only_matched_as_the_first_path_segment(self):
+        url = "https://jobs.example.com/careers/zh-CN/job/1"
+        assert career.english_url(url) == url
+
+    def test_rendered_row_carries_the_english_link(self):
+        row = career.format_line(
+            listing(1, url="https://x.wd1.myworkdayjobs.com/zh-CN/site/job/A_1")
+        )
+        assert "/en-US/" in row
+        assert "zh-CN" not in row
+
+
+class TestApplyLinkLocaleHardening:
+    """The zh-CN Blackstone leak was one shape of the same bug. These cover
+    the other shapes that actually occur in the live feeds."""
+
+    def test_underscore_locale_segment_is_rewritten(self):
+        assert (
+            career.english_url("https://x.wd5.myworkdayjobs.com/zh_CN/site/job/A_1")
+            == "https://x.wd5.myworkdayjobs.com/en_US/site/job/A_1"
+        )
+
+    def test_rewrite_preserves_the_separator_style(self):
+        """en_US for underscore tenants, en-US for hyphen ones -- ATSes are
+        picky about which form they accept."""
+        assert "/en_US/" in career.english_url("https://h/fr_CA/s/job/1")
+        assert "/en-US/" in career.english_url("https://h/fr-CA/s/job/1")
+
+    def test_lang_query_parameter_is_rewritten(self):
+        assert (
+            career.english_url("https://careers.acme.com/job/1?lang=zh-cn")
+            == "https://careers.acme.com/job/1?lang=en-us"
+        )
+
+    def test_locale_and_language_parameters_are_rewritten(self):
+        assert "locale=en_US" in career.english_url("https://h/j?locale=ja_JP")
+        assert "language=en" in career.english_url("https://h/j?language=de")
+
+    def test_query_rewrite_keeps_other_parameters_intact(self):
+        out = career.english_url("https://h/j?gh_jid=8384705002&lang=fr-ca&src=x")
+        assert "gh_jid=8384705002" in out
+        assert "src=x" in out
+        assert "lang=en-ca" not in out
+        assert "lang=en-us" in out
+
+    def test_english_query_values_are_untouched(self):
+        for url in (
+            "https://www.moveworks.com/us/en/careers?gh_jid=8384705002&lang=en-us",
+            "https://h/j?locale=en_US",
+        ):
+            assert career.english_url(url) == url
+
+    def test_two_letter_tenant_slugs_are_never_treated_as_locales(self):
+        """ey=Ernst & Young, ls=Living Spaces, ac=Arrow, au=American
+        University. Rewriting these would break 450+ working links."""
+        for url in (
+            "https://careers.ey.com/ey/job/New-York-Data-Architecture_1",
+            "https://livingspaces.wd5.myworkdayjobs.com/ls/job/La-Mirada/FE-Dev-1",
+            "https://arrow.wd1.myworkdayjobs.com/ac/job/Purchase-NY/Analyst_R242574",
+            "https://american.wd1.myworkdayjobs.com/au/job/DC/Research-Assistant",
+            "https://job-boards.greenhouse.io/cc/jobs/5170312008",
+        ):
+            assert career.english_url(url) == url
+
+
+class TestForeignLocaleDetector:
+    """Normalisation only rewrites shapes we can prove are locales. Anything
+    else foreign-looking must surface in CloudWatch, not in Discord."""
+
+    def test_flags_a_locale_that_normalisation_deliberately_skips(self):
+        assert (
+            career.foreign_locale("https://jobs.example.com/careers/zh-CN/job/1")
+            == "zh-CN"
+        )
+
+    def test_clean_urls_are_not_flagged(self):
+        for url in (
+            "https://boards.greenhouse.io/acme/jobs/123",
+            "https://careers.ey.com/ey/job/New-York_1",
+            "https://x.wd1.myworkdayjobs.com/en-US/site/job/A_1",
+        ):
+            assert career.foreign_locale(url) is None
+
+    def test_a_normalised_url_is_no_longer_flagged(self):
+        bad = "https://blackstone.wd1.myworkdayjobs.com/zh-CN/site/job/A_1"
+        assert career.foreign_locale(bad) == "zh-CN"
+        assert career.foreign_locale(career.english_url(bad)) is None
+
+    def test_audit_reports_rows_whose_links_are_still_foreign(self):
+        chosen = {
+            "Internships": [
+                listing(1, company="Clean", url="https://boards.greenhouse.io/a/1"),
+                listing(2, company="Odd", url="https://h/careers/zh-CN/job/1"),
+            ],
+            "New Grad": [listing(3, company="AlsoOdd", url="https://h/x/ja_JP/j/2")],
+        }
+        assert career.audit_links(chosen) == [
+            ("Odd", "zh-CN", "https://h/careers/zh-CN/job/1"),
+            ("AlsoOdd", "ja_JP", "https://h/x/ja_JP/j/2"),
+        ]
+
+    def test_audit_is_silent_when_every_link_is_english(self):
+        chosen = {"Internships": [listing(1)], "New Grad": [listing(2)]}
+        assert career.audit_links(chosen) == []
+
+    def test_audit_sees_links_as_rendered_not_as_fetched(self):
+        """A link english_url can fix must not be reported as a problem."""
+        chosen = {"Internships": [listing(1, url="https://h/zh-CN/site/job/1")]}
+        assert career.audit_links(chosen) == []

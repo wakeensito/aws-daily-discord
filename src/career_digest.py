@@ -29,6 +29,7 @@ import os
 import pathlib
 import re
 import time
+import urllib.parse
 import urllib.request
 
 import boto3
@@ -398,13 +399,94 @@ def plan_digest(unseen_by_section, key=None):
     return chosen, [x["id"] for x in all_unseen], len(all_unseen) - shown
 
 
+LOCALE_SEGMENT = re.compile(
+    r"^(https?://[^/]+)/([a-zA-Z]{2})([-_])([a-zA-Z]{2})(?=[/?#]|$)"
+)
+LOCALE_QUERY = re.compile(
+    r"\b(lang|locale|language)=([a-zA-Z]{2})(?:([-_])([a-zA-Z]{2}))?\b",
+    re.IGNORECASE,
+)
+LOCALE_VALUE = re.compile(r"([a-zA-Z]{2})[-_]([a-zA-Z]{2})")
+
+
+def _english(separator, region):
+    """Build the English equivalent of a locale token, keeping the source's
+    separator and capitalisation -- ATSes reject the wrong form."""
+    if not separator:
+        return "en"
+    return f"en{separator}{'US' if region.isupper() else 'us'}"
+
+
+def english_url(url):
+    """Force an ATS apply link to its English locale.
+
+    Simplify scrapes some postings with the scraper's own locale baked in, so
+    the apply page opens in a foreign language -- a Blackstone Miami role
+    rendered entirely in Simplified Chinese.
+
+    Only unambiguous locale tokens are rewritten: an ``xx-YY``/``xx_YY``
+    leading path segment, or a lang/locale/language query value. A bare
+    two-letter segment is left alone because in this feed those are tenant
+    slugs, not locales (ey = Ernst & Young, ls = Living Spaces, au = American
+    University), and rewriting them would break 450+ working links.
+    """
+    url = url or ""
+
+    match = LOCALE_SEGMENT.match(url)
+    if match and match.group(2).lower() != "en":
+        host, _, separator, region = match.groups()
+        url = f"{host}/{_english(separator, region)}{url[match.end():]}"
+
+    def swap(found):
+        key, language, separator, region = found.groups()
+        if language.lower() == "en":
+            return found.group(0)
+        return f"{key}={_english(separator, region or '')}"
+
+    return LOCALE_QUERY.sub(swap, url)
+
+
+def foreign_locale(url):
+    """Return a non-English locale token still present in ``url``, if any.
+
+    english_url only rewrites shapes it can prove are locales. This catches
+    the rest -- a locale buried deeper in a path, say -- so a novel shape
+    surfaces in CloudWatch instead of in front of a club member.
+    """
+    parts = urllib.parse.urlsplit(url or "")
+    values = [segment for segment in parts.path.split("/") if segment]
+    values += [value for _, value in urllib.parse.parse_qsl(parts.query)]
+    for value in values:
+        token = LOCALE_VALUE.fullmatch(value)
+        if token and token.group(1).lower() != "en":
+            return value
+    return None
+
+
+def audit_links(chosen):
+    """Rows whose apply link is still foreign after normalisation.
+
+    Reported, never dropped -- a mangled-looking link is more often a tenant
+    slug we should leave alone than a real locale, and silently binning real
+    jobs is the worse failure.
+    """
+    flagged = []
+    for rows in chosen.values():
+        for row in rows:
+            url = english_url(row.get("url", ""))
+            token = foreign_locale(url)
+            if token:
+                flagged.append((str(row.get("company_name", "?")), token, url))
+    return flagged
+
+
 def format_line(listing):
     star = "⭐ " if is_aws(listing) else "• "
     company = str(listing.get("company_name", "?")).strip()[:40]
     title = str(listing.get("title", "?")).strip()[:70]
     locations = listing.get("locations") or []
     where = str(locations[0]).strip()[:30] if locations else "—"
-    url = listing.get("url", "")
+    url = english_url(listing.get("url", ""))
     row = f"{star}**{company}** — {title} — {where} — [apply]({url})"
     others = listing.get("_suppressed") or 0
     if others > 0:
@@ -569,6 +651,9 @@ def lambda_handler(event, context):
         if marks:
             mark_seen(marks)  # still burn the NONE rejections
         return {"statusCode": 200, "posted": 0}
+
+    for company, token, url in audit_links(chosen):
+        print(f"WARNING foreign apply link ({token}) — {company}: {url}")
 
     messages = build_messages(chosen, scope)
     for i, message in enumerate(messages, 1):
