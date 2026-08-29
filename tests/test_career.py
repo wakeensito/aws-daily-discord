@@ -283,3 +283,48 @@ class TestEmbedSuppression:
 
         payload = dc.build_payload("msg")
         assert "flags" not in payload
+
+
+class TestApplyLinkLocale:
+    """Simplify sometimes captures an ATS URL with the scraper's own locale
+    baked into the path, so the apply page renders in a foreign language.
+    A Blackstone Miami role opened entirely in Simplified Chinese."""
+
+    def test_chinese_locale_is_rewritten_to_english(self):
+        assert career.english_url(
+            "https://blackstone.wd1.myworkdayjobs.com/zh-CN/Blackstone_Campus_Careers/job/Miami/X_45021"
+        ) == (
+            "https://blackstone.wd1.myworkdayjobs.com/en-US/Blackstone_Campus_Careers/job/Miami/X_45021"
+        )
+
+    def test_french_canadian_locale_is_rewritten(self):
+        assert (
+            career.english_url("https://rtx.wd1.myworkdayjobs.com/fr-CA/rec_ext/job/A_1")
+            == "https://rtx.wd1.myworkdayjobs.com/en-US/rec_ext/job/A_1"
+        )
+
+    def test_english_locales_are_left_alone(self):
+        for url in (
+            "https://x.wd1.myworkdayjobs.com/en-US/site/job/A_1",
+            "https://x.wd1.myworkdayjobs.com/en-CA/site/job/A_1",
+        ):
+            assert career.english_url(url) == url
+
+    def test_urls_without_a_locale_segment_are_untouched(self):
+        for url in (
+            "https://boards.greenhouse.io/acme/jobs/123",
+            "https://blackstone.wd1.myworkdayjobs.com/bx_external_site/job/Miami/X_1",
+            "",
+        ):
+            assert career.english_url(url) == url
+
+    def test_locale_is_only_matched_as_the_first_path_segment(self):
+        url = "https://jobs.example.com/careers/zh-CN/job/1"
+        assert career.english_url(url) == url
+
+    def test_rendered_row_carries_the_english_link(self):
+        row = career.format_line(
+            listing(1, url="https://x.wd1.myworkdayjobs.com/zh-CN/site/job/A_1")
+        )
+        assert "/en-US/" in row
+        assert "zh-CN" not in row

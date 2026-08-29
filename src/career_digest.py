@@ -398,13 +398,30 @@ def plan_digest(unseen_by_section, key=None):
     return chosen, [x["id"] for x in all_unseen], len(all_unseen) - shown
 
 
+LOCALE_PATH = re.compile(r"^(https?://[^/]+)/([a-z]{2})-[A-Z]{2}(?=/|$)")
+
+
+def english_url(url):
+    """Force an ATS apply link to its English locale.
+
+    Simplify scrapes some Workday postings with the scraper's own locale in
+    the path, so the apply page opens in a foreign language -- a Blackstone
+    Miami role rendered entirely in Simplified Chinese. Only a leading
+    ``xx-YY`` segment is a locale, and only non-English ones are rewritten.
+    """
+    match = LOCALE_PATH.match(url or "")
+    if not match or match.group(2) == "en":
+        return url
+    return f"{match.group(1)}/en-US{url[match.end():]}"
+
+
 def format_line(listing):
     star = "⭐ " if is_aws(listing) else "• "
     company = str(listing.get("company_name", "?")).strip()[:40]
     title = str(listing.get("title", "?")).strip()[:70]
     locations = listing.get("locations") or []
     where = str(locations[0]).strip()[:30] if locations else "—"
-    url = listing.get("url", "")
+    url = english_url(listing.get("url", ""))
     row = f"{star}**{company}** — {title} — {where} — [apply]({url})"
     others = listing.get("_suppressed") or 0
     if others > 0:
