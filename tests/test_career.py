@@ -427,3 +427,231 @@ class TestForeignLocaleDetector:
         """A link english_url can fix must not be reported as a problem."""
         chosen = {"Internships": [listing(1, url="https://h/zh-CN/site/job/1")]}
         assert career.audit_links(chosen) == []
+
+
+class TestCloudSecurityFloor:
+    """Cloud and security roles are the club's identity and the feed's rarest
+    rows: production runs label 2-5 IT/CYBER listings against 20-32 CS and
+    8-21 AI ones. Selection is newest-first, so without a reserved seat they
+    lose all 8 slots to fresher SWE postings roughly three days in four."""
+
+    def _pool(self, section, count, label=None, start=0):
+        rows = []
+        for i in range(count):
+            row = listing(start + i, company=f"Co{start + i}")
+            if label:
+                row["_label"] = label
+            rows.append(row)
+        return {section: rows, "New Grad" if section == "Internships" else "Internships": []}
+
+    def test_cloud_role_survives_a_flood_of_newer_swe_rows(self):
+        """The bug: an IT row posted yesterday is buried by 30 CS rows posted
+        today, and never reaches the digest."""
+        cloud = listing(999, company="Datadog", posted_ago_days=9,
+                        title="Cloud Infrastructure Engineer Intern")
+        cloud["_label"] = "IT"
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*swe, cloud], "New Grad": []}
+        )
+        assert cloud in chosen["Internships"]
+
+    def test_security_role_survives_the_same_flood(self):
+        cyber = listing(999, company="Verkada", posted_ago_days=9,
+                        title="Security Engineer Intern")
+        cyber["_label"] = "CYBER"
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*swe, cyber], "New Grad": []}
+        )
+        assert cyber in chosen["Internships"]
+
+    def test_reserves_at_most_the_floor(self):
+        """A floor, never a takeover. An IT-heavy day must not push every
+        other label out of the digest."""
+        cloud = []
+        for i in range(8):
+            row = listing(900 + i, company=f"Cloud{i}", posted_ago_days=9,
+                          title="DevOps Engineer Intern")
+            row["_label"] = "IT"
+            cloud.append(row)
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*swe, *cloud], "New Grad": []}
+        )
+        promoted = [x for x in chosen["Internships"] if x["_label"] == "IT"]
+        assert len(promoted) == career.LABEL_FLOOR
+
+    def test_promotion_keeps_rank_order_among_promoted_rows(self):
+        """Two reserved seats go to the two BEST cloud rows, not any two."""
+        newer = listing(901, company="Newer", posted_ago_days=2,
+                        title="Cloud Engineer")
+        older = listing(902, company="Older", posted_ago_days=20,
+                        title="Site Reliability Engineer")
+        oldest = listing(903, company="Oldest", posted_ago_days=30,
+                         title="Platform Engineer")
+        for row in (newer, older, oldest):
+            row["_label"] = "IT"
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*swe, oldest, older, newer], "New Grad": []}
+        )
+        promoted = [x for x in chosen["Internships"] if x["_label"] == "IT"]
+        assert promoted == [newer, older]
+
+    def test_promotion_only_displaces_the_last_rows(self):
+        """Reserving seats must cost the rows nearest the cut, never the top
+        of the digest — an AWS-starred row still leads."""
+        aws = listing(500, company="Amazon Web Services", posted_ago_days=1)
+        aws["_label"] = "CS"
+        cloud = listing(999, company="Datadog", posted_ago_days=9)
+        cloud["_label"] = "IT"
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [aws, *swe, cloud], "New Grad": []}
+        )
+        assert chosen["Internships"][0] is aws
+
+    def test_unlabelled_pools_are_untouched(self):
+        """Florida dry runs and older fixtures carry no _label; selection must
+        behave exactly as before rather than raising."""
+        unseen = {
+            "Internships": [listing(i, company=f"Co{i}") for i in range(30)],
+            "New Grad": [],
+        }
+        chosen, _, _ = career.plan_digest(unseen)
+        assert len(chosen["Internships"]) == career.TOTAL_CAP
+
+    def test_floor_does_not_invent_rows(self):
+        """No cloud rows in the pool -> the digest is unchanged, not short."""
+        swe = [listing(i, company=f"Co{i}") for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest({"Internships": swe, "New Grad": []})
+        assert len(chosen["Internships"]) == career.TOTAL_CAP
+
+    def test_company_cap_still_wins_over_the_floor(self):
+        """One employer must not take both reserved seats with two cloud reqs."""
+        rows = []
+        for i in range(4):
+            row = listing(900 + i, company="Deloitte", posted_ago_days=9,
+                          title="Cyber Software Engineering Analyst")
+            row["_label"] = "CYBER"
+            rows.append(row)
+        swe = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in swe:
+            row["_label"] = "CS"
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*swe, *rows], "New Grad": []}
+        )
+        deloitte = [x for x in chosen["Internships"] if x["company_name"] == "Deloitte"]
+        assert len(deloitte) == career.COMPANY_CAP
+
+
+class TestReservedSeatCorroboration:
+    """A reserved seat is the one place a wrong label does real damage: it
+    converts a coin-flip classification into a guaranteed slot. Live runs put
+    'Notability - Backend Engineer' (IT) and 'Cogent Security - Forward
+    Deployed Agent Engineer' (CYBER) in reserved seats -- both violations of
+    rules already in the prompt. The title must corroborate the label before a
+    row can claim a seat; uncorroborated rows still compete normally on rank."""
+
+    def _flood(self):
+        rows = [listing(i, company=f"Co{i}", posted_ago_days=1) for i in range(30)]
+        for row in rows:
+            row["_label"] = "CS"
+        return rows
+
+    def _priority(self, title, company="Somewhere", label="IT", days=9):
+        row = listing(999, company=company, posted_ago_days=days, title=title)
+        row["_label"] = label
+        return row
+
+    def test_backend_engineer_labelled_it_gets_no_reserved_seat(self):
+        row = self._priority("Backend Engineer", company="Notability")
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*self._flood(), row], "New Grad": []}
+        )
+        assert row not in chosen["Internships"]
+
+    def test_employer_name_alone_does_not_corroborate(self):
+        """The classifier's own first rule: never classify by employer."""
+        row = self._priority(
+            "Forward Deployed Agent Engineer - Early Career",
+            company="Cogent Security",
+            label="CYBER",
+        )
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*self._flood(), row], "New Grad": []}
+        )
+        assert row not in chosen["Internships"]
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "DevOps Engineer",
+            "Cloud Engineer - Platform",
+            "Site Reliability Engineer",
+            "Software Engineer Intern - Infrastructure Engineering",
+            "Systems Administrator",
+            "Network Engineer",
+        ],
+    )
+    def test_real_cloud_titles_take_the_seat(self, title):
+        row = self._priority(title)
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*self._flood(), row], "New Grad": []}
+        )
+        assert row in chosen["Internships"]
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Security Engineer",
+            "Cybersecurity Analyst Intern",
+            "Information Security Intern",
+            "Application Security Engineer",
+            "Identity and Access Management Analyst",
+            "Threat Detection Engineer",
+        ],
+    )
+    def test_real_security_titles_take_the_seat(self, title):
+        row = self._priority(title, label="CYBER")
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*self._flood(), row], "New Grad": []}
+        )
+        assert row in chosen["Internships"]
+
+    def test_uncorroborated_row_does_not_consume_the_floor(self):
+        """A mislabelled row sitting in the natural top 8 must not spend a
+        reserved seat -- otherwise it blocks the genuine cloud role behind it."""
+        impostor = listing(500, company="Notability", posted_ago_days=1,
+                           title="Backend Engineer")
+        impostor["_label"] = "IT"
+        real = self._priority("Cloud Security Engineer", company="Datadog",
+                              label="CYBER", days=9)
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [impostor, *self._flood(), real], "New Grad": []}
+        )
+        assert real in chosen["Internships"]
+
+    def test_title_alone_is_not_enough_without_the_label(self):
+        """Corroboration is an AND. Nova rejecting a row still governs --
+        a physical 'Security Installer' is NONE and never reaches selection,
+        but a CS-labelled row must not seize a seat on a keyword either."""
+        row = self._priority("Software Engineer - Cloud Infrastructure",
+                             label="CS")
+        chosen, _, _ = career.plan_digest(
+            {"Internships": [*self._flood(), row], "New Grad": []}
+        )
+        assert row not in chosen["Internships"]

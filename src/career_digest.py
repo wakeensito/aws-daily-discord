@@ -81,6 +81,49 @@ TOTAL_CAP = 16
 # are still MARKED SEEN — capping selection must never shrink the mark set,
 # or those listings return on every run forever.
 COMPANY_CAP = 1
+# Cloud and security are the club's whole identity and the feed's rarest rows.
+# A 14-day window holds 13 such internships out of 579 and 6 new-grad roles out
+# of 609; production runs label 2-5 IT/CYBER listings against 20-32 CS and 8-21
+# AI ones. Selection is newest-first, so two cloud rows lose all 8 slots to
+# fresher SWE postings roughly three days in four. LABEL_CAPS caps HW from
+# above for the opposite reason; this is the same control pointed the other way.
+# Per the classifier prompt, IT covers cloud engineering, DevOps, SRE and
+# platform work, and CYBER covers security -- together they ARE the bucket.
+PRIORITY_LABELS = frozenset({"CYBER", "IT"})
+LABEL_FLOOR = 2  # reserved seats per section; a floor, never a quota
+# A reserved seat is the one place a wrong label does real damage: it turns a
+# coin-flip classification into a guaranteed slot. Live runs seated "Notability
+# - Backend Engineer" as IT and "Cogent Security - Forward Deployed Agent
+# Engineer" as CYBER -- the second is the prompt's own first rule broken, the
+# employer's name read as the job. So a seat needs the TITLE to corroborate the
+# label. This is an AND with Nova, never a replacement: the model still rejects
+# the physical "Security Installer" and "Data Center Technician" this pattern
+# would happily match, and the pattern still rejects the product-software rows
+# the model mislabels. Each covers the other's failure mode. Uncorroborated
+# rows are not dropped -- they just compete on rank like everything else.
+CLOUD_TITLE = re.compile(
+    r"\bcloud\b|\bdev ?ops\b|\bdev ?sec ?ops\b|\bsre\b|site reliability|"
+    r"platform engineer|infrastructur|\binfra\b|kubernetes|virtuali[sz]ation|"
+    r"observability|\bnetwork(ing|s)?\b|sys ?admin|systems? administrat|"
+    r"database administrat|help ?desk|\bit support\b|endpoint|"
+    r"\bsecurity\b|\bcyber|\binfosec\b|\bappsec\b|penetration test|"
+    r"\bpen ?test|threat|incident response|malware|forensic|"
+    r"identity and access|\biam\b|\bgrc\b|vulnerabilit|\bsoc analyst\b",
+    re.IGNORECASE,
+)
+
+
+def _is_cloud_security(listing):
+    """True when Nova's label AND the title both say cloud or security.
+
+    Only the title is read -- never the company name, which is what put a
+    security firm's agent-engineering role in a reserved seat.
+    """
+    return bool(
+        listing.get("_label") in PRIORITY_LABELS
+        and CLOUD_TITLE.search(str(listing.get("title", "")))
+    )
+
 MESSAGE_CAP = 1900  # Discord rejects at 2000
 # Both runs are daily, so the headers contrast on GEOGRAPHY, not frequency —
 # "Daily" vs "Florida" wrongly implied the Florida drop wasn't daily. Same
@@ -372,6 +415,37 @@ def _cap_per_company(pool):
     return kept
 
 
+def _select_with_floor(pool, limit):
+    """Take `limit` rows, reserving up to LABEL_FLOOR seats for cloud/security.
+
+    A seat goes only to a row whose label AND title agree (_is_cloud_security);
+    an uncorroborated row still competes on rank like any other.
+
+    The reserved seats are the LAST ones, so promotion costs only the rows
+    nearest the cut. The top of the digest is never touched -- the AWS-starred
+    row still leads the national run, and the Miami-Dade row still leads the
+    Florida one, which is the whole point of each ranking.
+
+    Runs after _cap_per_company, so one employer with four open security reqs
+    still takes only COMPANY_CAP of the reserved seats. Promotes rows that are
+    already in the pool and never invents or drops any: a pool carrying no
+    `_label` (Florida dry runs, unit fixtures) selects exactly as before.
+    """
+    chosen = pool[:limit]
+    waiting = [x for x in pool[limit:] if _is_cloud_security(x)]
+    have = sum(1 for x in chosen if _is_cloud_security(x))
+    need = min(LABEL_FLOOR - have, len(waiting))
+    if need <= 0:
+        return chosen
+    # Evict the weakest rows that are not themselves cloud/security.
+    evictable = [
+        i for i, x in enumerate(chosen) if not _is_cloud_security(x)
+    ]
+    for i in reversed(evictable[-need:]):
+        chosen.pop(i)
+    return chosen + waiting[:need]
+
+
 def plan_digest(unseen_by_section, key=None):
     """Pure selection logic (unit-tested): pick what to show per section,
     respecting per-section caps but redistributing spare capacity up to the
@@ -384,16 +458,18 @@ def plan_digest(unseen_by_section, key=None):
     }
     # Selection pools are company-capped; `pools` stays whole for marking.
     showable = {s: _cap_per_company(pool) for s, pool in pools.items()}
-    chosen = {s: pool[: SECTION_CAPS[s]] for s, pool in showable.items()}
+    limits = {s: min(len(pool), SECTION_CAPS[s]) for s, pool in showable.items()}
     # Second pass: hand any unused capacity (either section running short)
     # to whichever section still has supply, up to the total cap.
-    remaining = TOTAL_CAP - sum(len(v) for v in chosen.values())
+    remaining = TOTAL_CAP - sum(limits.values())
     for section, pool in showable.items():
         if remaining <= 0:
             break
-        extra = pool[len(chosen[section]) : len(chosen[section]) + remaining]
-        chosen[section] += extra
-        remaining -= len(extra)
+        extra = min(remaining, len(pool) - limits[section])
+        limits[section] += extra
+        remaining -= extra
+    # Sizes settled, fill each section -- reserving its cloud/security seats.
+    chosen = {s: _select_with_floor(pool, limits[s]) for s, pool in showable.items()}
     all_unseen = [x for pool in pools.values() for x in pool]
     shown = sum(len(v) for v in chosen.values())
     return chosen, [x["id"] for x in all_unseen], len(all_unseen) - shown
