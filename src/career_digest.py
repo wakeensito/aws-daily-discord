@@ -65,7 +65,19 @@ SOURCES = [
     ),
 ]
 
-WINDOW_DAYS = 14  # only consider recent postings; older unseen ones age out
+# Only consider recent postings; older unseen ones age out. The window is
+# PER-SCOPE (2026-08-31): Florida yields 1-3 new listings a day, so a 14-day
+# window burns down to a single row within a week -- and it discards exactly
+# the rows the local digest exists for (Miami-Dade: 1 row at 14 days, 15 at
+# 60; internships 4 vs 14, where a full-looking section is really statewide
+# filler). Staleness does NOT rise with age: measured against the live feeds,
+# all four dead links sat in the 19-38 day band while 18 of 18 rows aged 46-60
+# days were still live -- Simplify's `active` flag, checked first below, is
+# what actually tracks freshness. Both feeds saturate at 60 (90 days adds
+# nothing), so reaching further buys nothing. National stays at 14: ~600
+# eligible rows a day, no supply problem. Dedup is unaffected either way --
+# the seen table's 180d TTL outlives any window here, so nothing can repeat.
+WINDOW_DAYS = {"usa": 14, "florida": 60}
 # One message per section (2026-08-28): the earlier single-message rule let
 # Internships — rendered first — consume the whole budget and silently drop
 # every New Grad row. Caps bound SELECTION evenly (AWS-starred first, then
@@ -367,8 +379,12 @@ def lead_with_florida(listing):
     return listing
 
 
-def is_eligible(listing, now):
-    """Live, visible, undergrad-friendly, US-based, recent enough."""
+def is_eligible(listing, now, scope="usa"):
+    """Live, visible, undergrad-friendly, US-based, recent enough for `scope`.
+
+    Scope defaults to the national window so a direct caller never widens by
+    accident; an unrecognised scope falls back to it too.
+    """
     if not listing.get("active") or not listing.get("is_visible"):
         return False
     degrees = listing.get("degrees") or []
@@ -379,7 +395,8 @@ def is_eligible(listing, now):
     # non-US; no locations at all = unknown, keep.
     if locations and not any(is_us_location(x) for x in locations):
         return False
-    return listing.get("date_posted", 0) > now - WINDOW_DAYS * 86400
+    days = WINDOW_DAYS.get(scope, WINDOW_DAYS["usa"])
+    return listing.get("date_posted", 0) > now - days * 86400
 
 
 def is_aws(listing):
@@ -693,7 +710,7 @@ def lambda_handler(event, context):
         except Exception as e:  # noqa: BLE001 — one dead source must not kill the other
             print(f"Fetch failed for {section} (skipping section): {e}")
             continue
-        candidates = [x for x in listings if is_eligible(x, now)]
+        candidates = [x for x in listings if is_eligible(x, now, scope)]
         if scope == "florida":
             candidates = [lead_with_florida(x) for x in candidates if is_florida(x)]
         ids = [x["id"] for x in candidates]
