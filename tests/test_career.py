@@ -655,3 +655,53 @@ class TestReservedSeatCorroboration:
             {"Internships": [*self._flood(), row], "New Grad": []}
         )
         assert row not in chosen["Internships"]
+
+
+class TestScopedWindow:
+    """The Florida run reaches further back than the national one.
+
+    Florida supplies ~1-3 new listings a day, so a 14-day window burns down to
+    a single row within a week -- and it discards the Miami-Dade rows the local
+    digest exists for (1 in 14 days vs 15 in 60). Measured against the live
+    feeds, staleness does NOT rise with age: every dead link sat in the 19-38
+    day band, while 18 of 18 rows aged 46-60 days were still live. Simplify's
+    `active` flag does the freshness work; the window was only throwing away
+    supply.
+    """
+
+    def test_florida_keeps_a_listing_the_national_window_drops(self):
+        old = listing(1, posted_ago_days=45)
+        assert career.is_eligible(old, NOW, "florida")
+        assert not career.is_eligible(old, NOW, "usa")
+
+    def test_default_scope_is_the_national_window(self):
+        # Every existing caller passes two arguments; national must not move.
+        assert not career.is_eligible(listing(2, posted_ago_days=45), NOW)
+        assert career.is_eligible(listing(3, posted_ago_days=13), NOW)
+
+    def test_florida_still_drops_beyond_its_own_window(self):
+        assert not career.is_eligible(listing(4, posted_ago_days=61), NOW, "florida")
+
+    def test_unknown_scope_falls_back_to_the_national_window(self):
+        # scope_from already normalises, but is_eligible must not widen on a
+        # typo if it is ever called directly.
+        assert not career.is_eligible(listing(5, posted_ago_days=45), NOW, "nope")
+
+    def test_widened_window_applies_to_both_sections(self, monkeypatch):
+        """Internships hides this bug: the section still fills all 8 slots, but
+        with statewide filler while Miami-Dade rows sit outside the window."""
+        old_fl = [
+            listing(100, posted_ago_days=45, locations=["Miami, FL"]),
+            listing(101, posted_ago_days=45, locations=["Miami, FL"]),
+        ]
+        monkeypatch.setattr(career, "DRY_RUN", True)
+        monkeypatch.setattr(career, "fetch_listings", lambda url: old_fl)
+        monkeypatch.setattr(career, "filter_relevant", lambda rows: (rows, []))
+        seen = []
+        monkeypatch.setattr(
+            career, "build_messages", lambda chosen, scope: seen.append(chosen) or ["x"]
+        )
+
+        career.lambda_handler({"scope": "florida"}, None)
+        chosen = seen[-1]
+        assert {s: len(v) for s, v in chosen.items()} == {"Internships": 1, "New Grad": 1}
