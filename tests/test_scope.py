@@ -175,3 +175,48 @@ class TestLocalityIgnoresOtherStates:
 
     def test_miami_outside_florida_is_not_tier_zero(self):
         assert career.locality_tier(listing(4, ["Miami, OK", "Orlando, FL"])) == 2
+
+
+class TestRemoteBackfill:
+    """Remote-US rows join the Florida pool, ranked below every Florida tier.
+
+    The Florida digest exists for roles members can take without leaving
+    Miami, and a 'Remote in USA' role is exactly that. Supply is the reason:
+    Florida yields 1-3 new rows a day, and three weeks after the window went
+    to 60 days the unseen pool was back to 5 internships / 8 new grad, while
+    31 / 30 remote-US rows sat unseen. Remote only fills what Florida cannot:
+    a Jacksonville row still beats any remote row."""
+
+    def test_remote_in_usa_is_remote(self):
+        assert career.is_remote_us(listing(1, ["Remote in USA"]))
+        assert career.is_remote_us(listing(2, ["Austin, TX", "remote in usa"]))
+
+    def test_other_remote_strings_are_not(self):
+        # Simplify writes 'Remote in <country>' for elsewhere; a bare 'Remote'
+        # never appears in the feed, so do not guess what it means.
+        assert not career.is_remote_us(listing(3, ["Remote in Canada"]))
+        assert not career.is_remote_us(listing(4, ["Remote"]))
+        assert not career.is_remote_us(listing(5, ["Miami, FL"]))
+        assert not career.is_remote_us(listing(6, []))
+
+    def test_remote_ranks_below_every_florida_tier(self):
+        remote = {**listing(1, ["Remote in USA"]), "date_posted": 9999}
+        orlando = {**listing(2, ["Orlando, FL"]), "date_posted": 1}
+        ordered = sorted([remote, orlando], key=career.florida_rank_key)
+        assert ordered[0]["id"] == "id-2"
+        assert career.locality_tier(remote) == 3
+
+    def test_florida_site_outranks_remote_on_the_same_listing(self):
+        assert career.locality_tier(listing(3, ["Remote in USA", "Miami, FL"])) == 0
+
+    def test_remote_row_renders_remote_not_its_hq(self):
+        """A hybrid listing shows locations[0]; 'Austin, TX' in the Florida
+        digest reads as a relocation, which is the one thing it is not."""
+        x = listing(4, ["Austin, TX", "Remote in USA"])
+        career.lead_with_florida(x)
+        assert x["locations"][0] == "Remote in USA"
+
+    def test_florida_site_still_leads_over_remote(self):
+        x = listing(5, ["Remote in USA", "Tampa, FL"])
+        career.lead_with_florida(x)
+        assert x["locations"][0] == "Tampa, FL"

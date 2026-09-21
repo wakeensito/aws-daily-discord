@@ -322,6 +322,24 @@ def is_florida(listing):
     return any(FL_CITY.search(str(x)) for x in (listing.get("locations") or []))
 
 
+# Simplify's one remote-US spelling. 'Remote in Canada' is a different string
+# and a bare 'Remote' never appears in the feed, so an exact match is safer
+# than guessing what either means.
+REMOTE_US = "remote in usa"
+
+
+def is_remote_us(listing):
+    """A role members can take without leaving Miami, which is the Florida
+    digest's whole reason to exist. Admitted to the 3 PM run (2026-09-21)
+    because Florida yields 1-3 new rows a day: three weeks after the window
+    went to 60 days the unseen pool was back to 5 internships / 8 new grad
+    while 31 / 30 remote-US rows sat unseen. Ranked BELOW every Florida tier,
+    so remote only fills what Florida cannot."""
+    return any(
+        str(x).strip().lower() == REMOTE_US for x in (listing.get("locations") or [])
+    )
+
+
 # Miami-Dade first, then the rest of the tri-county area (commutable), then
 # the rest of the state. We are a Miami school: a local role a week old beats
 # a Jacksonville role posted this morning.
@@ -340,7 +358,8 @@ BROWARD_PALM = re.compile(
 
 
 def locality_tier(listing):
-    """0 = Miami-Dade, 1 = Broward/Palm Beach, 2 = rest of Florida.
+    """0 = Miami-Dade, 1 = Broward/Palm Beach, 2 = rest of Florida, 3 = no
+    Florida site at all (remote-US rows, the only other way into the pool).
 
     Only Florida locations are considered: several tier names exist in other
     states ("Hollywood, CA", "Jupiter, NC"), and a multi-city listing that
@@ -352,7 +371,7 @@ def locality_tier(listing):
         return 0
     if any(BROWARD_PALM.search(x) for x in places):
         return 1
-    return 2
+    return 2 if places else 3
 
 
 def florida_rank_key(listing):
@@ -376,6 +395,12 @@ def lead_with_florida(listing):
             if FL_CITY.search(str(place)) and pattern.search(str(place)):
                 listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
                 return listing
+    # No Florida site: a remote row must say so. 'Austin, TX' on a hybrid
+    # listing reads as a relocation, the one thing a remote role is not.
+    for i, place in enumerate(locations):
+        if str(place).strip().lower() == REMOTE_US:
+            listing["locations"] = [place, *locations[:i], *locations[i + 1 :]]
+            return listing
     return listing
 
 
@@ -712,7 +737,11 @@ def lambda_handler(event, context):
             continue
         candidates = [x for x in listings if is_eligible(x, now, scope)]
         if scope == "florida":
-            candidates = [lead_with_florida(x) for x in candidates if is_florida(x)]
+            candidates = [
+                lead_with_florida(x)
+                for x in candidates
+                if is_florida(x) or is_remote_us(x)
+            ]
         ids = [x["id"] for x in candidates]
         unseen_ids = ids if DRY_RUN else filter_unseen(ids)
         unseen = [x for x in candidates if x["id"] in unseen_ids]

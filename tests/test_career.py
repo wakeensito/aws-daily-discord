@@ -705,3 +705,72 @@ class TestScopedWindow:
         career.lambda_handler({"scope": "florida"}, None)
         chosen = seen[-1]
         assert {s: len(v) for s, v in chosen.items()} == {"Internships": 1, "New Grad": 1}
+
+
+class TestRemoteBackfill:
+    """The Florida run admits 'Remote in USA' rows, but only behind Florida."""
+
+    @staticmethod
+    def _run_florida(monkeypatch, rows):
+        monkeypatch.setattr(career, "DRY_RUN", True)
+        monkeypatch.setattr(career, "fetch_listings", lambda url: rows)
+        monkeypatch.setattr(career, "filter_relevant", lambda rows: (rows, []))
+        seen = []
+        monkeypatch.setattr(
+            career, "build_messages", lambda chosen, scope: seen.append(chosen) or ["x"]
+        )
+        career.lambda_handler({"scope": "florida"}, None)
+        return seen[-1]
+
+    def test_thin_florida_day_backfills_with_remote(self, monkeypatch):
+        rows = [
+            listing(201, company="B", posted_ago_days=1, locations=["Remote in USA"]),
+            listing(200, company="A", posted_ago_days=30, locations=["Miami, FL"]),
+            listing(202, company="C", locations=["Remote in Canada"]),
+            listing(203, company="D", locations=["Seattle, WA"]),
+        ]
+        chosen = self._run_florida(monkeypatch, rows)
+        # Miami leads despite being older; Canada and Seattle never enter.
+        assert [x["id"] for x in chosen["Internships"]] == ["id-200", "id-201"]
+
+    def test_full_florida_day_posts_no_remote(self, monkeypatch):
+        rows = [
+            listing(300 + i, company=f"Co{i}", posted_ago_days=20, locations=["Miami, FL"])
+            for i in range(9)
+        ]
+        rows.append(
+            listing(399, company="Remote Co", posted_ago_days=0, locations=["Remote in USA"])
+        )
+        chosen = self._run_florida(monkeypatch, rows)
+        for section, picks in chosen.items():
+            assert len(picks) == career.SECTION_CAPS[section]
+            assert all(x["locations"][0] == "Miami, FL" for x in picks), section
+
+    def test_cloud_security_floor_may_seat_a_remote_row_on_a_full_day(self):
+        """Decision (2026-09-21): the #42 floor outranks Florida-before-remote
+        at the margin. It already evicts a Tampa SWE row for a Pensacola cloud
+        row; a remote cloud/security role joins the same rule. Only the LAST
+        slot moves -- Miami and Broward rows are never evicted for it."""
+        florida = [
+            listing(400 + i, company=f"Co{i}", locations=[loc], _label="CS")
+            for i, loc in enumerate(
+                ["Miami, FL"] * 3
+                + ["Fort Lauderdale, FL"] * 2
+                + ["Orlando, FL", "Tampa, FL", "Pensacola, FL"]
+            )
+        ]
+        remote = listing(
+            499,
+            company="Cloudy",
+            posted_ago_days=0,
+            title="Cloud Security Engineer Intern",
+            locations=["Remote in USA"],
+            _label="CYBER",
+        )
+        pool = sorted([*florida, remote], key=career.florida_rank_key)
+        chosen = career._select_with_floor(pool, career.SECTION_CAPS["Internships"])
+        assert [x["locations"][0] for x in chosen[:5]] == ["Miami, FL"] * 3 + [
+            "Fort Lauderdale, FL"
+        ] * 2
+        assert chosen[-1]["id"] == "id-499"
+        assert not any(x["locations"][0] == "Pensacola, FL" for x in chosen)
