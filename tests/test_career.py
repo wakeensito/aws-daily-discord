@@ -745,3 +745,32 @@ class TestRemoteBackfill:
         for section, picks in chosen.items():
             assert len(picks) == career.SECTION_CAPS[section]
             assert all(x["locations"][0] == "Miami, FL" for x in picks), section
+
+    def test_cloud_security_floor_may_seat_a_remote_row_on_a_full_day(self):
+        """Decision (2026-09-21): the #42 floor outranks Florida-before-remote
+        at the margin. It already evicts a Tampa SWE row for a Pensacola cloud
+        row; a remote cloud/security role joins the same rule. Only the LAST
+        slot moves -- Miami and Broward rows are never evicted for it."""
+        florida = [
+            listing(400 + i, company=f"Co{i}", locations=[loc], _label="CS")
+            for i, loc in enumerate(
+                ["Miami, FL"] * 3
+                + ["Fort Lauderdale, FL"] * 2
+                + ["Orlando, FL", "Tampa, FL", "Pensacola, FL"]
+            )
+        ]
+        remote = listing(
+            499,
+            company="Cloudy",
+            posted_ago_days=0,
+            title="Cloud Security Engineer Intern",
+            locations=["Remote in USA"],
+            _label="CYBER",
+        )
+        pool = sorted([*florida, remote], key=career.florida_rank_key)
+        chosen = career._select_with_floor(pool, career.SECTION_CAPS["Internships"])
+        assert [x["locations"][0] for x in chosen[:5]] == ["Miami, FL"] * 3 + [
+            "Fort Lauderdale, FL"
+        ] * 2
+        assert chosen[-1]["id"] == "id-499"
+        assert not any(x["locations"][0] == "Pensacola, FL" for x in chosen)
